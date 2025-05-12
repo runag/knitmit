@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+#!/usr/bin/env bash
+
+#  Copyright 2025 Stanislav Senotrusov
+#
+#  Licensed under the Apache License, Version 2.0 (the "License");
+#  you may not use this file except in compliance with the License.
+#  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+copy_to_clipboard() {
+  if command -v wl-copy >/dev/null 2>&1; then wl-copy
+  elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard
+  elif command -v pbcopy >/dev/null 2>&1; then pbcopy
+  else echo "No clipboard tool found. Printing to stdout:" >&2; cat
+  fi
+}
+
+make_prompt() {
+  cat <<EOF
+Based on the changes described in the diff below, write a commit message.
+
+* Follow these formatting rules:
+  * The first line must be a concise summary of the entire commit
+    * Limit: 50 characters maximum
+    * Do not prefix it with '#'
+  * The commit body must follow the summary
+    * Format: Markdown using '*' as the bullet symbol
+    * Do not use bold, italic, or other text formatting
+    * Do not include any trailing whitespace
+    * Limit: 72 characters per line
+  * Commit message should start with a capital letter
+
+* In writing commit message ensure:
+  * Clarity, conciseness, and fluency
+  * Consistent and formal terminology throughout
+
+* Avoid:
+  * Redundancy, clichés, and unnecessary embellishments
+  * Overly terse, overly literal, or informal phrasing
+
+* Use clear, direct, and professional English with formal tone
+* Keep the message readable and precise — brief but not overly minimal
+* Output only the result — do not add any introductory or closing remarks
+
+<diff-file>
+EOF
+
+  if [ "${1:-}" = small ]; then
+    git diff --diff-algorithm=minimal --no-color --cached
+  else
+    git diff --diff-algorithm=histogram --no-color --cached --function-context -U15
+
+    cat <<EOF
+</diff-file>
+
+For context, the following are the last 15 commit messages.
+<commit-messages>
+EOF
+
+    git log -n 15 --pretty=format:"%B" | grep -v "^Signed-off-by:"
+
+    cat <<EOF
+</commit-messages>
+EOF
+  fi
+}
+
+if git diff --cached --quiet; then
+  echo "No changes have been staged." >&2
+  exit 1
+else
+  chatgpt_limit=139000
+
+  # build the full prompt once
+  prompt="$(make_prompt)"
+  fullprompt="${prompt}"
+  
+  # if it is too long, rebuild with the “small” flag
+  if (( "${#prompt}" > chatgpt_limit )); then
+    prompt="$(make_prompt small)"
+
+    # still too long — warn the user
+    if (( "${#prompt}" > chatgpt_limit )); then
+      prompt="${fullprompt}"
+      echo "Please note that the prompt exceeds the current ChatGPT limit." >&2
+    fi
+  fi
+
+  # copy the final prompt (full or small) to the clipboard
+  <<<"${prompt}" copy_to_clipboard
+fi
