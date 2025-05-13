@@ -292,9 +292,10 @@ fi
 # Define the maximum character limit for the ChatGPT web interface.
 chatgpt_limit=139000
 
-# Define an array of tuples containing models
-# Format: ("model_type" "model_name")
-# Refer to https://ai.google.dev/gemini-api/docs/models for available model names
+# Define an array of tuples containing models.
+# Format: ("model_type" "model_name").
+# Currently, only "gemini" model type is implemented.
+# Refer to https://ai.google.dev/gemini-api/docs/models for available model names.
 models=(
   # "gemini" "gemini-2.0-flash"
   "gemini" "gemini-2.5-pro-exp-03-25"
@@ -335,6 +336,10 @@ while [ ${#models[@]} -gt 0 ]; do
   # Shift twice to remove the processed tuple from the array
   shift 2
 
+  # The model_type is used to call a separate function, e.g., "query_gemini".
+  # This structure allows for adding support for different model types (e.g., "openai", "anthropic")
+  # by implementing corresponding "query_openai", "query_anthropic" functions.
+  # Currently, only "gemini" model type is implemented.
   if response="$("query_${model_type}" "${model_name}" "${prompt}")"; then
     success=true
     break
