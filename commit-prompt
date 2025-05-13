@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-#!/usr/bin/env bash
-
 #  Copyright 2025 Stanislav Senotrusov
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,15 +14,150 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+# ## `any_argument`
+#
+# Checks if a specific argument is present in a list of provided arguments.
+#
+# This function iterates over a list of arguments starting from the second
+# parameter and checks if any of them match the first parameter.
+#
+# ### Usage
+#
+# any_argument <argument-to-find> [<arguments-to-search-in>...]
+#
+# Arguments:
+#   <argument-to-find>        The argument to search for in the list
+#   [<arguments-to-search-in>...] A space-separated list of arguments to search within
+#
+# ### Examples
+#
+# any_argument "--help" "--help" "-v" "--config"
+# any_argument "test" "run" "build" "test"
+#
+any_argument() {
+  local arg
+  # Iterate over arguments starting from the second one
+  for arg in "${@:2}"; do
+    # Check if the current argument matches the search target
+    [ "${arg}" = "$1" ] && return 0
+  done
+  # If no match is found after checking all arguments, return 1 (false)
+  return 1
+}
+
+# ## `copy_to_clipboard`
+#
+# Copies standard input to the system clipboard.
+#
+# This function attempts to use various clipboard tools (wl-copy, xclip,
+# pbcopy) in a preferred order. If none of these tools are available,
+# it prints the input to standard output as a fallback.
+#
+# ### Usage
+#
+# copy_to_clipboard
+#
 copy_to_clipboard() {
-  if command -v wl-copy >/dev/null 2>&1; then wl-copy
-  elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard
-  elif command -v pbcopy >/dev/null 2>&1; then pbcopy
-  else echo "No clipboard tool found. Printing to stdout:" >&2; cat
+  # Attempt to use wl-copy if available
+  if command -v wl-copy >/dev/null 2>&1; then
+    wl-copy || { echo "Could not access the clipboard using wl-copy." >&2; return 1; }
+  # Else, attempt to use xclip if available
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard || { echo "Could not access the clipboard using xclip." >&2; return 1; }
+  # Else, attempt to use pbcopy if available
+  elif command -v pbcopy >/dev/null 2>&1; then
+    pbcopy || { echo "Could not access the clipboard using pbcopy." >&2; return 1; }
+  # If no clipboard tool is found, print to standard output
+  else
+    echo "No compatible clipboard tool found. Printing to standard output instead:" >&2
+    cat || { echo "Could not read from standard input using cat." >&2; return 1; }
+    return # Indicates that data was output via cat, not necessarily an error
+  fi
+  # Confirm that the prompt was successfully copied to the clipboard
+  echo "Prompt copied to the clipboard." >&2
+}
+
+# ## `query_gemini`
+#
+# Sends a query to the Gemini API and retrieves the plain text response.
+#
+# This function prepares a JSON payload containing the input text.
+# It then sends this payload to the Gemini API using curl
+# and parses the JSON response using jq to extract the generated text content.
+#
+# ### Usage
+#
+# query_gemini <model> <input-text>
+#
+# Arguments:
+#   <model>       The Gemini model to query (e.g., "gemini-2.5-pro-preview-05-06")
+#   <input-text>  The input text to process and send to the model
+#
+# ### Examples
+#
+# query_gemini "gemini-2.0-flash" "Explain quantum computing in simple terms."
+#
+query_gemini() {
+  # Assign the first command-line argument to the model_name variable
+  local model_name="$1"
+  # Declare local variables for the processed model input and API response
+  local model_input
+  local model_response
+
+  # Prepare the input text by converting it to a JSON string value using jq
+  model_input=$(<<<"$2" jq --ascii-output --raw-input --slurp .) ||
+    { echo "Failed to process input text with jq." >&2; return 1; }
+
+  echo "Querying the Gemini API for model '${model_name}'..." >&2
+
+  # Send the HTTP POST request to the Gemini API using curl and capture its output
+  if model_response="$(curl "https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}" \
+    --fail-with-body --silent --show-error \
+    --header 'Content-Type: application/json' \
+    --request POST \
+    --data @- <<<'{"contents": [{"role": "user", "parts":[{"text": '"${model_input}"'}]}]}')"
+  then
+    # Successfully received a response, now attempt to parse it
+    # Extract the plain text content from the candidates array in the JSON response
+    <<<"${model_response}" jq --raw-output '.candidates[].content.parts[].text' ||
+      { echo "Could not process Gemini API response for model '${model_name}'." >&2; return 1; }
+  else
+    # The curl command indicated a failure when querying the API
+    # Output a general error message indicating the API query problem
+    echo "Could not query the Gemini API for model '${model_name}'." >&2
+
+    # Attempt to parse and display a specific error message from the API's JSON response body
+    <<<"${model_response}" jq --raw-output '.error.message' >&2 ||
+      { echo "Could not process Gemini API error response for model '${model_name}'." >&2; return 1; }
+
+    return 1
   fi
 }
 
+# ## `make_prompt`
+#
+# Generates a structured prompt for a commit message based on Git changes.
+#
+# This function creates a detailed prompt by analyzing staged Git changes
+# (diff) and recent commit history. If the "short" keyword is provided as an
+# argument, it generates a more concise prompt using a minimal diff.
+#
+# ### Usage
+#
+# make_prompt [<keyword>]
+#
+# Arguments:
+#   [<keyword>]  Optional keyword. If "short", generates a prompt with
+#                minimal diff context. Otherwise, a more detailed diff
+#                and recent commit history are included.
+#
+# ### Examples
+#
+# make_prompt
+# make_prompt short
+#
 make_prompt() {
+  # Begin constructing the prompt with formatting instructions and guidelines
   cat <<EOF
 Based on the changes described in the diff below, write a commit message.
 
@@ -44,21 +177,26 @@ Based on the changes described in the diff below, write a commit message.
   * Consistent and formal terminology throughout
 
 * Avoid:
-  * Redundancy, clichés, and unnecessary embellishments
+  * Redundancy, cliches, and unnecessary embellishments
   * Overly terse, overly literal, or informal phrasing
 
 * Use clear, direct, and professional English with formal tone
-* Keep the message readable and precise — brief but not overly minimal
-* Output only the result — do not add any introductory or closing remarks
+* Keep the message readable and precise - brief but not overly minimal
+* Output only the result - do not add any introductory or closing remarks
 
 <diff-file>
 EOF
 
-  if [ "${1:-}" = small ]; then
+  # Append the diff of staged changes to the prompt
+  if any_argument short "$@"; then
+    # Use a minimal diff if 'short' argument is provided
     git diff --diff-algorithm=minimal --no-color --cached
+    echo "A short prompt was generated." >&2
   else
+    # Otherwise, use a more detailed histogram diff with function context
     git diff --diff-algorithm=histogram --no-color --cached --function-context -U15
 
+    # Add a section separator for contextual commit messages
     cat <<EOF
 </diff-file>
 
@@ -66,35 +204,119 @@ For context, the following are the last 15 commit messages.
 <commit-messages>
 EOF
 
-    git log -n 15 --pretty=format:"%B" | grep -v "^Signed-off-by:"
+    # Append the last 15 commit messages
+    # Filter out "Signed-off-by" lines and remove excessive blank lines
+    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
+    git log -n 15 --pretty=format:"%B" | grep -v "^Signed-off-by:" | sed '/^$/N;/^\n$/D'
 
+    # Close the commit messages section
     cat <<EOF
 </commit-messages>
 EOF
   fi
 }
 
+# ## `display_help`
+#
+# Displays the help message for the script.
+#
+# This function prints usage instructions, a description of the script,
+# and details about available commands. It determines the script's name
+# dynamically for use in the help text.
+#
+# ### Usage
+#
+# display_help
+#
+display_help() {
+  # Get the script's base name for the usage instructions
+  local script_name
+  script_name="$(basename "$0")"
+  cat <<EOF
+Usage: ${script_name} [COMMAND...]
+
+Generates a commit message suggestion based on staged Git changes by
+querying the Gemini AI model. The suggested message is then used to
+prepare a Git commit.
+
+Commands:
+  short          Generates a more concise prompt. This involves using a minimal
+                 diff of staged changes, which can be helpful if the default
+                 prompt is too long for the AI model's input limits.
+
+  copy           Generates the prompt and copies it to the system clipboard,
+                 then exits. This option bypasses querying the AI model,
+                 allowing you to use the prompt elsewhere or review it manually.
+
+  help, -h, --help
+                 Displays this help message and exits.
+
+Behavior:
+- If no commands are given, the script generates a full prompt, queries the
+  Gemini AI, and then opens 'git commit' with the AI-suggested message.
+- The commands 'short' and 'copy' can be specified in any order.
+
+Requirements:
+- Git must be installed and used in a Git repository.
+- The GEMINI_API_KEY environment variable must be set to query the Gemini AI.
+EOF
+}
+
+# Main script execution starts here
+
+# Check for help argument first; this takes precedence
+if any_argument "help" "$@" || any_argument "--help" "$@" || any_argument "-h" "$@"; then
+  display_help
+  exit 0
+fi
+
+# Check if there are any changes staged for commit
 if git diff --cached --quiet; then
-  echo "No changes have been staged." >&2
+  echo "No changes have been staged for commit." >&2
   exit 1
 else
-  chatgpt_limit=139000
+  # Generate the prompt using staged changes and commit history
+  # Pass all script arguments to make_prompt for 'short' keyword detection
+  prompt="$(make_prompt "$@")"
 
-  # build the full prompt once
-  prompt="$(make_prompt)"
-  fullprompt="${prompt}"
-  
-  # if it is too long, rebuild with the “small” flag
-  if (( "${#prompt}" > chatgpt_limit )); then
-    prompt="$(make_prompt small)"
+  # Check if the generated prompt exceeds ChatGPT's web interface length limit.
+  if (( "${#prompt}" > 139000 )); then
+    if any_argument short "$@"; then
+      # Message displayed if the 'short' argument is used but the prompt is still too long
+      echo "The prompt remains too long for ChatGPT's limit, even with the 'short' option." >&2
+    else
+      # Suggest using the 'short' argument if the prompt is too long
+      echo "The prompt exceeds ChatGPT's length limit. To reduce its size, consider running:" >&2
+      echo "  $(basename "$0") short" >&2
+    fi
+    # The script continues even if the prompt is too long, allowing clipboard copy
+  fi
 
-    # still too long — warn the user
-    if (( "${#prompt}" > chatgpt_limit )); then
-      prompt="${fullprompt}"
-      echo "Please note that the prompt exceeds the current ChatGPT limit." >&2
+  # Copy the generated prompt to the system clipboard
+  <<<"${prompt}" copy_to_clipboard
+
+  # If 'copy' argument is present, skip querying the language model and exit
+  if any_argument copy "$@"; then
+    echo "The 'copy' argument was provided; skipping query to the language model." >&2
+    exit
+  fi
+
+  # Ensure the Gemini API key is available as an environment variable
+  if [ -z "${GEMINI_API_KEY:-}" ]; then
+    echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
+    exit 1
+  fi
+
+  # Attempt to query the Gemini API with the primary model
+  # Refer to https://ai.google.dev/gemini-api/docs/models for available model names
+  if ! response="$(query_gemini "gemini-2.5-pro-exp-03-25" "${prompt}")"; then
+    # If the primary model fails, attempt a query with a fallback model
+    if ! response="$(query_gemini "gemini-2.5-flash-preview-04-17" "${prompt}")"; then
+      echo "Failed to retrieve a response from both primary and fallback Gemini language models." >&2
+      exit 1
     fi
   fi
 
-  # copy the final prompt (full or small) to the clipboard
-  <<<"${prompt}" copy_to_clipboard
+  # Use the response from the language model as a template for the git commit message
+  git commit --template <(echo "${response}")
 fi
