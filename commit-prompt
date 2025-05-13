@@ -104,6 +104,12 @@ query_gemini() {
   local model_input
   local model_response
 
+  # Ensure the Gemini API key is available as an environment variable
+  if [ -z "${GEMINI_API_KEY:-}" ]; then
+    echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
+    return 1
+  fi
+
   # Prepare the input text by converting it to a JSON string value using jq
   model_input=$(<<<"$2" jq --ascii-output --raw-input --slurp .) ||
     { echo "Failed to process input text with jq." >&2; return 1; }
@@ -157,6 +163,13 @@ query_gemini() {
 # make_prompt short
 #
 make_prompt() {
+  local context_messages=12
+
+  # If the "short" keyword is provided, reduce the number of context messages
+  if any_argument short "$@"; then
+    context_messages=4
+  fi
+
   # Begin constructing the prompt with formatting instructions and guidelines
   cat <<EOF
 Based on the changes described in the diff below, write a commit message.
@@ -184,7 +197,22 @@ Based on the changes described in the diff below, write a commit message.
 * Keep the message readable and precise - brief but not overly minimal
 * Output only the result - do not add any introductory or closing remarks
 
-<diff-file>
+For context, here are the last ${context_messages} commit messages:
+
+\`\`\`
+EOF
+
+  # Append the last ${context_messages} commit messages
+  # Filter out "Signed-off-by" lines and remove excessive blank lines
+  # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
+  git log -n "${context_messages}" --pretty=format:"%B" | grep -v "^Signed-off-by:" | sed '/^$/N;/^\n$/D'
+
+  cat <<'EOF'
+```
+
+Below is the diff showing the changes that are to be included in the commit itself:
+
+```
 EOF
 
   # Append the diff of staged changes to the prompt
@@ -195,25 +223,10 @@ EOF
   else
     # Otherwise, use a more detailed histogram diff with function context
     git diff --diff-algorithm=histogram --no-color --cached --function-context -U15
-
-    # Add a section separator for contextual commit messages
-    cat <<EOF
-</diff-file>
-
-For context, the following are the last 15 commit messages.
-<commit-messages>
-EOF
-
-    # Append the last 15 commit messages
-    # Filter out "Signed-off-by" lines and remove excessive blank lines
-    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
-    git log -n 15 --pretty=format:"%B" | grep -v "^Signed-off-by:" | sed '/^$/N;/^\n$/D'
-
-    # Close the commit messages section
-    cat <<EOF
-</commit-messages>
-EOF
   fi
+
+  # Close the commit messages section
+  echo '```'
 }
 
 # ## `display_help`
@@ -262,7 +275,7 @@ Requirements:
 EOF
 }
 
-# Main script execution starts here
+# Main script starts here
 
 # Check for help argument first; this takes precedence
 if any_argument "help" "$@" || any_argument "--help" "$@" || any_argument "-h" "$@"; then
@@ -274,50 +287,66 @@ fi
 if git diff --cached --quiet; then
   echo "No changes have been staged for commit." >&2
   exit 1
-else
-  # Generate the prompt using staged changes and commit history
-  # Pass all script arguments to make_prompt for 'short' keyword detection
-  prompt="$(make_prompt "$@")"
-
-  # Check if the generated prompt exceeds ChatGPT's web interface length limit.
-  if (( "${#prompt}" > 139000 )); then
-    if any_argument short "$@"; then
-      # Message displayed if the 'short' argument is used but the prompt is still too long
-      echo "The prompt remains too long for ChatGPT's limit, even with the 'short' option." >&2
-    else
-      # Suggest using the 'short' argument if the prompt is too long
-      echo "The prompt exceeds ChatGPT's length limit. To reduce its size, consider running:" >&2
-      echo "  $(basename "$0") short" >&2
-    fi
-    # The script continues even if the prompt is too long, allowing clipboard copy
-  fi
-
-  # Copy the generated prompt to the system clipboard
-  <<<"${prompt}" copy_to_clipboard
-
-  # If 'copy' argument is present, skip querying the language model and exit
-  if any_argument copy "$@"; then
-    echo "The 'copy' argument was provided; skipping query to the language model." >&2
-    exit
-  fi
-
-  # Ensure the Gemini API key is available as an environment variable
-  if [ -z "${GEMINI_API_KEY:-}" ]; then
-    echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
-    exit 1
-  fi
-
-  # Attempt to query the Gemini API with the primary model
-  # Refer to https://ai.google.dev/gemini-api/docs/models for available model names
-  if ! response="$(query_gemini "gemini-2.5-pro-exp-03-25" "${prompt}")"; then
-    # If the primary model fails, attempt a query with a fallback model
-    if ! response="$(query_gemini "gemini-2.5-flash-preview-04-17" "${prompt}")"; then
-      echo "Failed to retrieve a response from both primary and fallback Gemini language models." >&2
-      exit 1
-    fi
-  fi
-
-  # Use the response from the language model as a template for the git commit message
-  echo "Making a commit with the response as the template..." >&2
-  git commit --template <(echo "${response}")
 fi
+
+# Define the maximum character limit for the ChatGPT web interface.
+chatgpt_limit=139000
+
+# Define an array of tuples containing models
+# Format: ("model_type" "model_name")
+# Refer to https://ai.google.dev/gemini-api/docs/models for available model names
+models=(
+  "gemini" "gemini-2.0-flash"
+  "gemini" "gemini-2.5-pro-exp-03-25"
+  "gemini" "gemini-2.5-flash-preview-04-17"
+)
+
+# Generate the prompt using staged changes and commit history
+# Pass all script arguments to make_prompt for 'short' keyword detection
+prompt="$(make_prompt "$@")"
+
+# Check if the generated prompt exceeds ChatGPT's web interface length limit.
+if (( "${#prompt}" > chatgpt_limit )); then
+  if any_argument short "$@"; then
+    # Message displayed if the 'short' argument is used but the prompt is still too long
+    echo "The prompt remains too long for ChatGPT's limit, even with the 'short' option." >&2
+  else
+    # Suggest using the 'short' argument if the prompt is too long
+    echo "The prompt exceeds ChatGPT's length limit. To reduce its size, consider running:" >&2
+    echo "  $(basename "$0") short" >&2
+  fi
+  # The script continues even if the prompt is too long, allowing clipboard copy
+fi
+
+# Copy the generated prompt to the system clipboard
+<<<"${prompt}" copy_to_clipboard
+
+# If 'copy' argument is present, skip querying the language model and exit
+if any_argument copy "$@"; then
+  echo "The 'copy' argument was provided; skipping query to the language model." >&2
+  exit
+fi
+
+# Loop through the models until the array is exhausted
+success=false
+while [ ${#models[@]} -gt 0 ]; do
+  model_type="${models[0]}"
+  model_name="${models[1]}"
+  # Shift twice to remove the processed tuple from the array
+  shift 2
+
+  if response="$("query_${model_type}" "${model_name}" "${prompt}")"; then
+    success=true
+    break
+  fi
+done
+
+# Check if no model succeeded based on the exit status
+if [ "${success}" = false ]; then
+  echo "Failed to retrieve a response from all specified language models." >&2
+  exit 1
+fi
+
+# Use the response from the language model as a template for the git commit message
+echo "Making a commit with the response as the template..." >&2
+git commit --template <(echo "${response}")
