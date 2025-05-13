@@ -318,5 +318,6 @@ else
   fi
 
   # Use the response from the language model as a template for the git commit message
+  echo "Making a commit with the response as the template..." >&2
   git commit --template <(echo "${response}")
 fi
