@@ -310,8 +310,7 @@ chatgpt_limit=139000
 # Currently, only "gemini" model type is implemented.
 # Refer to https://ai.google.dev/gemini-api/docs/models for available model names.
 models=(
-  gemini gemini-2.0-flash-lite2
-  gemini gemini-2.0-flash-lite
+  # gemini gemini-2.0-flash-lite
   gemini gemini-2.5-pro-exp-03-25
   gemini gemini-2.5-flash-preview-04-17
   gemini gemini-2.0-flash
