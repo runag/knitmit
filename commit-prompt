@@ -61,18 +61,22 @@ copy_to_clipboard() {
   # Attempt to use wl-copy if available
   if command -v wl-copy >/dev/null 2>&1; then
     wl-copy || { echo "Could not access the clipboard using wl-copy." >&2; return 1; }
+
   # Else, attempt to use xclip if available
   elif command -v xclip >/dev/null 2>&1; then
     xclip -selection clipboard || { echo "Could not access the clipboard using xclip." >&2; return 1; }
+
   # Else, attempt to use pbcopy if available
   elif command -v pbcopy >/dev/null 2>&1; then
     pbcopy || { echo "Could not access the clipboard using pbcopy." >&2; return 1; }
+  
   # If no clipboard tool is found, print to standard output
   else
     echo "No compatible clipboard tool found. Printing to standard output instead:" >&2
     cat || { echo "Could not read from standard input using cat." >&2; return 1; }
     return # Indicates that data was output via cat, not necessarily an error
   fi
+
   # Confirm that the prompt was successfully copied to the clipboard
   echo "Prompt copied to the clipboard." >&2
 }
@@ -256,10 +260,10 @@ EOF
 #
 display_help() {
   # Get the script's base name for the usage instructions
-  local script_name
-  script_name="$(basename "$0")"
+  local script_name; script_name="$(basename "$0")"
+
   cat <<EOF
-Usage: ${script_name} [COMMAND...]
+Usage: ${script_name:-"commit-prompt"} [COMMAND...]
 
 Generates a commit message suggestion based on staged Git changes by
 querying the Gemini AI model. The suggested message is then used to
