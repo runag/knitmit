@@ -77,65 +77,78 @@ copy_to_clipboard() {
   echo "Prompt copied to the clipboard." >&2
 }
 
-# ## `query_gemini`
+# ## `query_language_model`
 #
 # Sends a query to the Gemini API and retrieves the plain text response.
 #
-# This function prepares a JSON payload containing the input text.
-# It then sends this payload to the Gemini API using curl
-# and parses the JSON response using jq to extract the generated text content.
+# This function prepares a JSON payload containing the input text received via
+# standard input. It sends this payload to the Gemini API using curl and
+# parses the JSON response using jq to extract the generated text content.
 #
 # ### Usage
 #
-# query_gemini <model> <input-text>
+# query_language_model <model_type> <model_name>
 #
 # Arguments:
-#   <model>       The Gemini model to query (e.g., "gemini-2.5-pro-preview-05-06")
-#   <input-text>  The input text to process and send to the model
+#   <model_type> The model type to query (e.g., "gemini")
+#   <model_name> The model name to query (e.g., "gemini-2.5-pro-preview-05-06")
 #
 # ### Examples
 #
-# query_gemini "gemini-2.0-flash" "Explain quantum computing in simple terms."
+# echo "Explain quantum computing in simple terms." | query_language_model "gemini" "gemini-2.0-flash"
 #
-query_gemini() {
-  # Assign the first command-line argument to the model_name variable
-  local model_name="$1"
-  # Declare local variables for the processed model input and API response
+query_language_model() {
+  # Assign the model type and name provided as arguments
+  local model_type="$1"
+  local model_name="$2"
+
+  # Declare local variables for holding the input text, API response, and request URL
   local model_input
   local model_response
+  local request_url
 
-  # Ensure the Gemini API key is available as an environment variable
+  # Check if the Gemini API key is available as an environment variable
   if [ -z "${GEMINI_API_KEY:-}" ]; then
     echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
     return 1
   fi
 
   # Prepare the input text by converting it to a JSON string value using jq
-  model_input=$(<<<"$2" jq --ascii-output --raw-input --slurp .) ||
+  # This ensures special characters are correctly escaped for the JSON payload
+  model_input=$(jq --ascii-output --raw-input --slurp .) ||
     { echo "Failed to process input text with jq." >&2; return 1; }
 
+  # Construct the API URL for the request using the model name and API key
+  request_url="https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}"
+
+  # Inform the user which model is being queried
   echo "Querying the Gemini API for model '${model_name}'..." >&2
 
-  # Send the HTTP POST request to the Gemini API using curl and capture its output
-  if model_response="$(curl "https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}" \
+  # Send the HTTP POST request to the Gemini API using curl
+  # Capture the output and check the exit status of the curl command
+  if model_response="$(curl "${request_url}" \
     --fail-with-body --silent --show-error \
     --header 'Content-Type: application/json' \
     --request POST \
     --data @- <<<'{"contents": [{"role": "user", "parts":[{"text": '"${model_input}"'}]}]}')"
   then
-    # Successfully received a response, now attempt to parse it
+    # Successfully received a response from the API
+
     # Extract the plain text content from the candidates array in the JSON response
     <<<"${model_response}" jq --raw-output '.candidates[].content.parts[].text' ||
       { echo "Could not process Gemini API response for model '${model_name}'." >&2; return 1; }
   else
     # The curl command indicated a failure when querying the API
+
     # Output a general error message indicating the API query problem
     echo "Could not query the Gemini API for model '${model_name}'." >&2
 
     # Attempt to parse and display a specific error message from the API's JSON response body
+    # This provides more detail on why the API request failed
     <<<"${model_response}" jq --raw-output '.error.message' >&2 ||
       { echo "Could not process Gemini API error response for model '${model_name}'." >&2; return 1; }
 
+    # Return a non-zero status code to indicate failure
     return 1
   fi
 }
@@ -297,9 +310,11 @@ chatgpt_limit=139000
 # Currently, only "gemini" model type is implemented.
 # Refer to https://ai.google.dev/gemini-api/docs/models for available model names.
 models=(
-  # "gemini" "gemini-2.0-flash"
-  "gemini" "gemini-2.5-pro-exp-03-25"
-  "gemini" "gemini-2.5-flash-preview-04-17"
+  gemini gemini-2.0-flash-lite2
+  gemini gemini-2.0-flash-lite
+  gemini gemini-2.5-pro-exp-03-25
+  gemini gemini-2.5-flash-preview-04-17
+  gemini gemini-2.0-flash
 )
 
 # Generate the prompt using staged changes and commit history
@@ -330,17 +345,14 @@ fi
 
 # Loop through the models until the array is exhausted
 success=false
-while [ ${#models[@]} -gt 0 ]; do
-  model_type="${models[0]}"
-  model_name="${models[1]}"
-  # Shift twice to remove the processed tuple from the array
-  shift 2
 
-  # The model_type is used to call a separate function, e.g., "query_gemini".
-  # This structure allows for adding support for different model types (e.g., "openai", "anthropic")
-  # by implementing corresponding "query_openai", "query_anthropic" functions.
-  # Currently, only "gemini" model type is implemented.
-  if response="$("query_${model_type}" "${model_name}" "${prompt}")"; then
+# Loop through the array with a step of 2
+for ((i = 0; i < ${#models[@]}; i += 2)); do
+  model_type="${models[i]}"
+  model_name="${models[i + 1]}"
+
+  # Attempt to query the language model with the specified type and name
+  if response="$(query_language_model "${model_type}" "${model_name}" <<<"${prompt}")"; then
     success=true
     break
   fi
