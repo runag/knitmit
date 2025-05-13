@@ -14,7 +14,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# ## `any_argument`
+# ## `is_any_argument`
 #
 # Checks if a specific argument is present in a list of provided arguments.
 #
@@ -23,7 +23,7 @@
 #
 # ### Usage
 #
-# any_argument <argument-to-find> [<arguments-to-search-in>...]
+# is_any_argument <argument-to-find> [<arguments-to-search-in>...]
 #
 # Arguments:
 #   <argument-to-find>        The argument to search for in the list
@@ -31,10 +31,10 @@
 #
 # ### Examples
 #
-# any_argument "--help" "--help" "-v" "--config"
-# any_argument "test" "run" "build" "test"
+# is_any_argument "--help" "--help" "-v" "--config"
+# is_any_argument "test" "run" "build" "test"
 #
-any_argument() {
+is_any_argument() {
   local arg
   # Iterate over arguments starting from the second one
   for arg in "${@:2}"; do
@@ -83,23 +83,22 @@ copy_to_clipboard() {
 
 # ## `query_language_model`
 #
-# Sends a query to the Gemini API and retrieves the plain text response.
+# Send a prompt to the Gemini API and retrieves the plain-text response.
 #
-# This function prepares a JSON payload containing the input text received via
-# standard input. It sends this payload to the Gemini API using curl and
-# parses the JSON response using jq to extract the generated text content.
+# This function reads a prompt from *stdin*, wraps it in a JSON payload, calls the specified
+# model with `curl`, then pipes the result through `jq` to pull out the generated text.
 #
 # ### Usage
 #
 # query_language_model <model_type> <model_name>
 #
 # Arguments:
-#   <model_type> The model type to query (e.g., "gemini")
-#   <model_name> The model name to query (e.g., "gemini-2.5-pro-preview-05-06")
+#   <model_type>  The provider to call, e.g. `gemini`
+#   <model_name>  The specific model, e.g. `gemini-2.0-flash`
 #
 # ### Examples
 #
-# echo "Explain quantum computing in simple terms." | query_language_model "gemini" "gemini-2.0-flash"
+# echo "Explain quantum computing in simple terms." | query_language_model gemini gemini-2.0-flash
 #
 query_language_model() {
   # Assign the model type and name provided as arguments
@@ -185,7 +184,7 @@ make_prompt() {
   local context_messages=12
 
   # If the "short" keyword is provided, reduce the number of context messages
-  if any_argument short "$@"; then
+  if is_any_argument short "$@"; then
     context_messages=4
   fi
 
@@ -235,7 +234,7 @@ Below is the diff showing the changes that are to be included in the commit itse
 EOF
 
   # Append the diff of staged changes to the prompt
-  if any_argument short "$@"; then
+  if is_any_argument short "$@"; then
     # Use a minimal diff if 'short' argument is provided
     git diff --diff-algorithm=minimal --no-color --cached
     echo "A short prompt was generated." >&2
@@ -297,7 +296,7 @@ EOF
 # Main script starts here
 
 # Check for help argument first; this takes precedence
-if any_argument "help" "$@" || any_argument "--help" "$@" || any_argument "-h" "$@"; then
+if is_any_argument "help" "$@" || is_any_argument "--help" "$@" || is_any_argument "-h" "$@"; then
   display_help
   exit 0
 fi
@@ -328,7 +327,7 @@ prompt="$(make_prompt "$@")"
 
 # Check if the generated prompt exceeds ChatGPT's web interface length limit.
 if (( "${#prompt}" > chatgpt_limit )); then
-  if any_argument short "$@"; then
+  if is_any_argument short "$@"; then
     # Message displayed if the 'short' argument is used but the prompt is still too long
     echo "The prompt remains too long for ChatGPT's limit, even with the 'short' option." >&2
   else
@@ -343,7 +342,7 @@ fi
 <<<"${prompt}" copy_to_clipboard
 
 # If 'copy' argument is present, skip querying the language model and exit
-if any_argument copy "$@"; then
+if is_any_argument copy "$@"; then
   echo "The 'copy' argument was provided; skipping query to the language model." >&2
   exit
 fi
