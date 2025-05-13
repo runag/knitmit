@@ -131,10 +131,12 @@ query_language_model() {
   # Send the HTTP POST request to the Gemini API using curl
   # Capture the output and check the exit status of the curl command
   if model_response="$(curl "${request_url}" \
-    --fail-with-body --silent --show-error \
-    --header 'Content-Type: application/json' \
     --request POST \
-    --data @- <<<'{"contents": [{"role": "user", "parts":[{"text": '"${model_input}"'}]}]}')"
+    --header 'Content-Type: application/json' \
+    --data @- <<<'{"contents": [{"role": "user", "parts":[{"text": '"${model_input}"'}]}]}' \
+    --fail-with-body \
+    --show-error \
+    --silent )"
   then
     # Successfully received a response from the API
 
