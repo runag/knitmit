@@ -132,7 +132,7 @@ copy_to_clipboard() {
 #
 # Send a prompt to the language model API and retrieves the plain-text response.
 #
-# This function reads a prompt from *stdin*, wraps it in a JSON payload, calls the specified
+# This function reads a prompt from `stdin`, wraps it in a JSON payload, calls the specified
 # model with `curl`, then pipes the result through `jq` to pull out the generated text.
 #
 # ### Usage
@@ -194,12 +194,13 @@ query_language_model() {
           # For 'aichat', 'llm', and 'sgpt', the command is simply the model type itself
           command_array=("${model_type}")
 
-          # If the model name is specified as "--", use "default" as a user-friendly label
-          if [ "${model_name:-}" = "--" ]; then
-            model_name_human=default
-          else
-            # Otherwise, append the specified model name to the command array
+          # Check if a specific model name is provided
+          if [ "${model_name}" != "--" ]; then
+            # Append the model name to the command array if it is specified (not "--")
             command_array+=(--model "${model_name}")
+          else
+            # Assign "default" as a user-friendly label if the model name is not provided
+            model_name_human=default
           fi
         ;;
         ollama)
