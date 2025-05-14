@@ -14,6 +14,53 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
+# Define an array of ordered pairs representing model types and their names.
+#
+# Format:
+#   ("model_type" "model_name")
+#
+# Supported model types:
+#
+# * gemini:
+#   - Sends API calls directly to Gemini using `curl`.
+#   - Available model names can be found at:
+#     https://ai.google.dev/gemini-api/docs/models
+#
+# * aichat:
+#   - Command-line interface for language models.
+#   - Specify a model name or use "--" for the default model.
+#   - More details at:
+#     https://github.com/sigoden/aichat
+#
+# * llm:
+#   - Command-line interface for language models.
+#   - Specify a model name or use "--" for the default model.
+#   - More details at:
+#     https://github.com/simonw/llm
+#
+# * ollama:
+#   - Command-line interface for language models.
+#   - A model name must be specified.
+#   - More details at:
+#     https://github.com/ollama/ollama
+#
+# * sgpt:
+#   - Command-line interface for language models.
+#   - Specify a model name or use "--" for the default model.
+#   - More details at:
+#     https://github.com/tbckr/sgpt
+#
+models=(
+  # aichat --
+  # gemini gemini-2.0-flash-lite
+  gemini gemini-2.5-pro-exp-03-25
+  gemini gemini-2.5-flash-preview-04-17
+  gemini gemini-2.0-flash
+)
+
+# Define the maximum character limit for the ChatGPT web interface.
+chatgpt_limit=139000
+
 # ## `is_any_argument`
 #
 # Checks if a specific argument is present in a list of provided arguments.
@@ -83,18 +130,18 @@ copy_to_clipboard() {
 
 # ## `query_language_model`
 #
-# Send a prompt to the Gemini API and retrieves the plain-text response.
+# Send a prompt to the language model API and retrieves the plain-text response.
 #
 # This function reads a prompt from *stdin*, wraps it in a JSON payload, calls the specified
 # model with `curl`, then pipes the result through `jq` to pull out the generated text.
 #
 # ### Usage
 #
-# query_language_model <model_type> <model_name>
+# query_language_model <model-type> <model-name>
 #
 # Arguments:
-#   <model_type>  The provider to call, e.g. `gemini`
-#   <model_name>  The specific model, e.g. `gemini-2.0-flash`
+#   <model-type>  The type of the model, e.g. `gemini`
+#   <model-name>  The specific model identifier, e.g. `gemini-2.0-flash`
 #
 # ### Examples
 #
@@ -105,53 +152,115 @@ query_language_model() {
   local model_type="$1"
   local model_name="$2"
 
-  # Declare local variables for holding the input text, API response, and request URL
-  local model_input
-  local model_response
+  # Declare local variables
+  local command_array
+  local input_text_json
+  local model_name_human
+  local request_body
+  local request_body_template
   local request_url
+  local response_body
+  local response_error_filter
+  local response_filter
 
-  # Check if the Gemini API key is available as an environment variable
-  if [ -z "${GEMINI_API_KEY:-}" ]; then
-    echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
-    return 1
-  fi
+  # Determine the API endpoint based on the model type
+  case "${model_type}" in
+    gemini)
+      # Check if the Gemini API key is available as an environment variable
+      if [ -z "${GEMINI_API_KEY:-}" ]; then
+        echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
+        return 1
+      fi
+
+      # Construct the API URL for the request using the model name and API key
+      request_url="https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}"
+      
+      # Create the JSON-formatted request body template with the placeholder for input text
+      request_body_template='{"contents": [{"role": "user", "parts":[{"text": %s}]}]}'
+
+      # Define the jq filter to extract the generated text from the API response
+      response_filter='.candidates[].content.parts[].text'
+      
+      # Define the jq filter to extract the error message if the API request fails
+      response_error_filter='.error.message'
+      ;;
+    aichat|llm|ollama|sgpt)
+      # Initialize the human-readable model name with the original model name value
+      model_name_human="${model_name}"
+
+      # Populate the command array based on the specified model type
+      case "${model_type}" in
+        aichat|llm|sgpt)
+          # For 'aichat', 'llm', and 'sgpt', the command is simply the model type itself
+          command_array=("${model_type}")
+
+          # If the model name is specified as "--", use "default" as a user-friendly label
+          if [ "${model_name:-}" = "--" ]; then
+            model_name_human=default
+          else
+            # Otherwise, append the specified model name to the command array
+            command_array+=(--model "${model_name}")
+          fi
+        ;;
+        ollama)
+          # For 'ollama', the command is "ollama run" followed by the model name
+          command_array=(ollama run "${model_name}")
+        ;;
+      esac
+
+      # Display information about the request being sent to the specified model and command
+      echo "Sending request to '${model_type}' command with language model '${model_name_human}'..." >&2
+
+      # Run the command with the constructed arguments and handle any errors if it fails
+      "${command_array[@]}" || {
+        echo "Failed to run '${model_type}' with model '${model_name_human}'." >&2
+        return 1
+      }
+
+      # Return the status code of the previous command to propagate its outcome
+      return
+      ;;
+    *)
+      echo "Unsupported model type '${model_type}'." >&2
+      return 1
+      ;;
+  esac
 
   # Prepare the input text by converting it to a JSON string value using jq
   # This ensures special characters are correctly escaped for the JSON payload
-  model_input=$(jq --ascii-output --raw-input --slurp .) ||
-    { echo "Failed to process input text with jq." >&2; return 1; }
+  input_text_json=$(jq --ascii-output --raw-input --slurp .) ||
+    { echo "Failed to convert input text to JSON format using 'jq'." >&2; return 1; }
 
-  # Construct the API URL for the request using the model name and API key
-  request_url="https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}"
+  # Build the request body from the template
+  # shellcheck disable=SC2059
+  printf -v request_body "${request_body_template}" "${input_text_json}" ||
+    { echo "Failed to construct the request body from the template." >&2; return 1; }
 
   # Inform the user which model is being queried
-  echo "Querying the Gemini API for model '${model_name}'..." >&2
+  echo "Sending request to language model '${model_name}' (${model_type})..." >&2
 
-  # Send the HTTP POST request to the Gemini API using curl
+  # Send the HTTP POST request to the language model API using curl
   # Capture the output and check the exit status of the curl command
-  if model_response="$(curl "${request_url}" \
+  if response_body="$(curl "${request_url}" \
     --request POST \
     --header 'Content-Type: application/json' \
-    --data @- <<<'{"contents": [{"role": "user", "parts":[{"text": '"${model_input}"'}]}]}' \
+    --data @- <<<"${request_body}" \
     --fail-with-body \
     --show-error \
-    --silent )"
+    --silent)"
   then
     # Successfully received a response from the API
 
     # Extract the plain text content from the candidates array in the JSON response
-    <<<"${model_response}" jq --raw-output '.candidates[].content.parts[].text' ||
-      { echo "Could not process Gemini API response for model '${model_name}'." >&2; return 1; }
+    <<<"${response_body}" jq --raw-output "${response_filter}" ||
+      { echo "Failed to extract content from the response for model '${model_name}' (${model_type})." >&2; return 1; }
   else
-    # The curl command indicated a failure when querying the API
+    # An error occurred during the API request
+    echo "Could not retrieve a response from the language model '${model_name}' (${model_type})." >&2
 
-    # Output a general error message indicating the API query problem
-    echo "Could not query the Gemini API for model '${model_name}'." >&2
-
-    # Attempt to parse and display a specific error message from the API's JSON response body
-    # This provides more detail on why the API request failed
-    <<<"${model_response}" jq --raw-output '.error.message' >&2 ||
-      { echo "Could not process Gemini API error response for model '${model_name}'." >&2; return 1; }
+    # Attempt to extract and display the specific error message from the API response
+    <<<"${response_body}" jq --raw-output "${response_error_filter}" >&2 ||
+      { echo "Failed to parse the error response from language model '${model_name}' (${model_type})." >&2; return 1; }
 
     # Return a non-zero status code to indicate failure
     return 1
@@ -267,8 +376,9 @@ display_help() {
 Usage: ${script_name:-"commit-prompt"} [COMMAND...]
 
 Generates a commit message suggestion based on staged Git changes by
-querying the Gemini AI model. The suggested message is then used to
-prepare a Git commit.
+querying the Large Language Model (LLM).
+
+The suggested message is then used to prepare a Git commit.
 
 Commands:
   short          Generates a more concise prompt. This involves using a minimal
@@ -284,12 +394,12 @@ Commands:
 
 Behavior:
 - If no commands are given, the script generates a full prompt, queries the
-  Gemini AI, and then opens 'git commit' with the AI-suggested message.
+  LLM, and then opens 'git commit' with the AI-suggested message.
 - The commands 'short' and 'copy' can be specified in any order.
 
 Requirements:
 - Git must be installed and used in a Git repository.
-- The GEMINI_API_KEY environment variable must be set to query the Gemini AI.
+- The GEMINI_API_KEY environment variable must be set to query the Gemini.
 EOF
 }
 
@@ -307,25 +417,12 @@ if git diff --cached --quiet; then
   exit 1
 fi
 
-# Define the maximum character limit for the ChatGPT web interface.
-chatgpt_limit=139000
-
-# Define an array of tuples containing models.
-# Format: ("model_type" "model_name").
-# Currently, only "gemini" model type is implemented.
-# Refer to https://ai.google.dev/gemini-api/docs/models for available model names.
-models=(
-  # gemini gemini-2.0-flash-lite
-  gemini gemini-2.5-pro-exp-03-25
-  gemini gemini-2.5-flash-preview-04-17
-  gemini gemini-2.0-flash
-)
-
 # Generate the prompt using staged changes and commit history
 # Pass all script arguments to make_prompt for 'short' keyword detection
 prompt="$(make_prompt "$@")"
 
 # Check if the generated prompt exceeds ChatGPT's web interface length limit.
+# The script continues even if the prompt is too long, allowing clipboard copy
 if (( "${#prompt}" > chatgpt_limit )); then
   if is_any_argument short "$@"; then
     # Message displayed if the 'short' argument is used but the prompt is still too long
@@ -335,7 +432,6 @@ if (( "${#prompt}" > chatgpt_limit )); then
     echo "The prompt exceeds ChatGPT's length limit. To reduce its size, consider running:" >&2
     echo "  $(basename "$0") short" >&2
   fi
-  # The script continues even if the prompt is too long, allowing clipboard copy
 fi
 
 # Copy the generated prompt to the system clipboard
@@ -347,7 +443,8 @@ if is_any_argument copy "$@"; then
   exit
 fi
 
-# Loop through the models until the array is exhausted
+# Initialize the success flag to false - this flag will be used to track if 
+# at least one language model query was successful during the loop iteration.
 success=false
 
 # Loop through the array with a step of 2
