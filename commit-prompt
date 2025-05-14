@@ -21,16 +21,16 @@
 #
 # Supported model types:
 #
-# * gemini:
-#   - Sends API calls directly to Gemini using `curl`.
-#   - Available model names can be found at:
-#     https://ai.google.dev/gemini-api/docs/models
-#
 # * aichat:
 #   - Command-line interface for language models.
 #   - Specify a model name or use "--" for the default model.
 #   - More details at:
 #     https://github.com/sigoden/aichat
+#
+# * gemini:
+#   - Sends API calls directly to Gemini using `curl`.
+#   - Available model names can be found at:
+#     https://ai.google.dev/gemini-api/docs/models
 #
 # * llm:
 #   - Command-line interface for language models.
