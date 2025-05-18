@@ -220,6 +220,22 @@ shell::is_pipe_good () {
   ! [[ "${PIPESTATUS[*]}" =~ [^[:space:]0] ]]
 }
 
+# ## `query::gemini::is_configured`
+#
+# Checks if the Gemini API key is configured in the environment.
+#
+# This function verifies the presence of the `GEMINI_API_KEY` environment variable, indicating that 
+# the Gemini API is configured and ready for use.
+#
+# ### Usage
+#
+# query::gemini::is_configured
+#
+query::gemini::is_configured() {
+  # Check if the Gemini API key is set in the environment
+  [ -n "${GEMINI_API_KEY:-}" ]
+}
+
 # ## `query::gemini`
 #
 # Send a prompt to the Gemini language model API and retrieve the plain-text response.
@@ -300,6 +316,7 @@ query::gemini() {
 #
 query_models() {
   local model_list model_array model_item command_raw command_array response
+  local report_line deffered_report=()
 
   # Extract the list of model preferences from the configuration JSON
   model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${config_json}")" ||
@@ -321,12 +338,30 @@ query_models() {
 
     # Verify if the command exists before attempting to run it
     if ! command -v "${command_array[0]}" >/dev/null; then
-      if config::is_enabled report_missing_commands; then
-        echo "Could not find the command specified in the model preferences list: ${command_array[0]}" >&2
+      if config::is_enabled report_unavailable_commands false; then
+        echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
+      else
+        deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
       fi
+      # Skip the rest of the loop and proceed with the next iteration
       continue
     fi
 
+    # Check if the '<command>::is_configured' function exists in the current environment
+    if declare -F "${command_array[0]}::is_configured" > /dev/null; then
+      # If the function exists, invoke it to check if the command is configured properly
+      if ! "${command_array[0]}::is_configured"; then
+        # If the command is not configured and reporting is enabled, display a message
+        if config::is_enabled report_unavailable_commands false; then
+          echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
+        else
+          deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
+        fi
+        # Skip the rest of the loop and proceed with the next iteration
+        continue
+      fi
+    fi
+    
     # Log the outgoing request with model command details
     if ! declare -F "${command_array[0]}" > /dev/null; then
       echo "Invoking language model command: ${command_array[*]}..." >&2
@@ -334,13 +369,22 @@ query_models() {
 
     # Run the model command with the provided prompt and capture the response
     if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
-      echo "Failed to retrieve a valid response from model: ${command_array[*]}" >&2
+      echo "Model command failed with a non-zero exit status: ${command_array[*]}" >&2
+      # Skip the rest of the loop and proceed with the next iteration
       continue
     fi
 
     # Output the response and exit the loop
     echo "${response}"
     return
+  done
+
+  # Inform the user that additional issues were reported during the model querying process
+  echo "Additionally, during model querying, the following was reported:" >&2
+
+  # Loop through the deferred report array and display each line
+  for report_line in "${deffered_report[@]}"; do
+    echo "${report_line}" >&2
   done
 
   # If no model succeeded, return with failure status
@@ -403,24 +447,30 @@ Based on the changes described in the diff below, write a commit message.
 * Use clear, direct, and professional English with formal tone
 * Keep the message readable and precise - brief but not overly minimal
 * Output only the result - do not add any introductory or closing remarks
+EOF
+
+  if git rev-parse --verify HEAD >/dev/null 2>&1; then
+    cat <<'EOF' || fail "Could not output the data."
 
 For context, here are the most recent commit messages:
 
 ```
 EOF
 
-  # Append the last ${context_messages} commit messages
-  # Filter out "Signed-off-by" lines and remove excessive blank lines
-  # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
-  git log -n "${context_messages}" --pretty=format:"%B" |
-    grep::filter "^Signed-off-by:" |
-    sed '/^$/N;/^\n$/D'
+    # Append the last ${context_messages} commit messages
+    # Filter out "Signed-off-by" lines and remove excessive blank lines
+    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
+    git log -n "${context_messages}" --pretty=format:"%B" |
+      grep::filter "^Signed-off-by:" |
+      sed '/^$/N;/^\n$/D'
 
-  # Verify that the pipe operation was successful
-  shell::is_pipe_good || fail "Could not retrieve or process commit messages."
+    # Verify that the pipe operation was successful
+    shell::is_pipe_good || fail "Could not retrieve or process commit messages."
+
+    echo '```'
+  fi
 
   cat <<'EOF' || fail "Could not output the data."
-```
 
 Below is the diff showing the changes that are to be included in the commit itself:
 
@@ -456,8 +506,6 @@ EOF
 #
 # config::load
 #
-# No arguments or options are required.
-#
 config::load() {
   local config_path
 
@@ -477,19 +525,19 @@ config::load() {
   # Set the default configuration if the file does not exist
   config_json="$(cat <<JSON
 {
-  "copy_prompt": true,
+  "commit_with_template": true,
+  "copy_prompt": false,
   "copy_response": false,
   "interactive_prompt_limit": 139000,
   "query_language_model": true,
-  "report_missing_commands": false,
-  "commit_with_template": true,
+  "report_unavailable_commands": false,
   "model_preferences": [
-    ["aichat"],
-    ["llm"],
-    ["sgpt"],
     ["query::gemini", "gemini-2.5-flash-preview-04-17"],
     ["query::gemini", "gemini-2.0-flash"],
-    ["query::gemini", "gemini-2.0-flash-lite"]
+    ["query::gemini", "gemini-2.0-flash-lite"],
+    ["aichat"],
+    ["llm"],
+    ["sgpt"]
   ]
 }
 JSON
@@ -657,22 +705,25 @@ main_script() {
   # Pass all script arguments to make_prompt for 'short' keyword detection
   prompt="$(make_prompt "$@")" || fail "Failed to generate the prompt."
 
-  # Retrieve the interactive prompt limit from the configuration JSON or default to 139000
-  interactive_prompt_limit="$(config::get interactive_prompt_limit 139000)" ||
-    fail "Could not retrieve the interactive prompt limit from the configuration."
+  # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
+  if config::is_enabled copy_prompt false || shell::argument_exists copy "$@"; then
+    # Retrieve the interactive prompt limit from the configuration JSON or default to 139000
+    interactive_prompt_limit="$(config::get interactive_prompt_limit 139000)" ||
+      fail "Could not retrieve the interactive prompt limit from the configuration."
 
-  # Check if the generated prompt exceeds the maximum length for interactive use
-  if (( "${#prompt}" > interactive_prompt_limit )); then
-    if shell::argument_exists short "$@"; then
-      echo "The prompt remains too long for interactive use, even with the 'short' argument." >&2
-    else
-      echo "The prompt exceeds the interactive use length limit. To shorten it, use the 'short' argument:" >&2
-      echo "  ${BASH_SOURCE[0]##*/} short" >&2
+    # Check if the generated prompt exceeds the maximum length for interactive use
+    if (( "${#prompt}" > interactive_prompt_limit )); then
+      if shell::argument_exists short "$@"; then
+        echo "The prompt remains too long for interactive use, even with the 'short' argument." >&2
+      else
+        echo "The prompt exceeds the interactive use length limit. To shorten it, use the 'short' argument:" >&2
+        echo "  ${BASH_SOURCE[0]##*/} short" >&2
+      fi
     fi
   fi
 
   # Copy the prompt to the clipboard if the 'copy_prompt' setting is enabled and no 'result' argument is provided
-  if config::is_enabled copy_prompt && ! shell::argument_exists result "$@"; then
+  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt false && ! shell::argument_exists result "$@"; }; then
     platform::copy_to_clipboard <<<"${prompt}" ||
       softfail "Could not copy the prompt to the clipboard."
   fi
