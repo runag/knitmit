@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-#  Copyright 2025 Stanislav Senotrusov
+#  Copyright 2012-2025 Stanislav Senotrusov
 #
 #  Licensed under the Apache License, Version 2.0 (the "License");
 #  you may not use this file except in compliance with the License.
@@ -14,54 +14,166 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# Define an array of ordered pairs representing model types and their names.
-#
-# Format:
-#   ("model_type" "model_name")
-#
-# Supported model types:
-#
-# * aichat:
-#   - Command-line interface for language models.
-#   - Specify a model name or use "--" for the default model.
-#   - More details at:
-#     https://github.com/sigoden/aichat
-#
-# * gemini:
-#   - Sends API calls directly to Gemini using `curl`.
-#   - Available model names can be found at:
-#     https://ai.google.dev/gemini-api/docs/models
-#
-# * llm:
-#   - Command-line interface for language models.
-#   - Specify a model name or use "--" for the default model.
-#   - More details at:
-#     https://github.com/simonw/llm
-#
-# * ollama:
-#   - Command-line interface for language models.
-#   - A model name must be specified.
-#   - More details at:
-#     https://github.com/ollama/ollama
-#
-# * sgpt:
-#   - Command-line interface for language models.
-#   - Specify a model name or use "--" for the default model.
-#   - More details at:
-#     https://github.com/tbckr/sgpt
-#
-models=(
-  # aichat --
-  # gemini gemini-2.0-flash-lite
-  gemini gemini-2.5-pro-exp-03-25
-  gemini gemini-2.5-flash-preview-04-17
-  gemini gemini-2.0-flash
-)
+# Exit immediately if an unset variable is referenced
+set -o nounset
 
-# Define the maximum character limit for the ChatGPT web interface.
-chatgpt_limit=139000
+# ## `fail`
+#
+# Terminates the script with an error message and a stack trace.
+#
+# ### Usage
+#
+# fail <message>...
+#
+# Arguments:
+#   <message>...  Error message to display, composed from all remaining arguments.
+#
+# ### Examples
+#
+# fail "Critical failure." "Shutting down."
+#
+fail() {
+  softfail --from-fail-wrapper "$@"
+  exit 1
+}
 
-# ## `is_any_argument`
+# ## `softfail`
+#
+# Prints an error message and stack trace without terminating the script.
+#
+# ### Usage
+#
+# softfail [OPTIONS...] <message>...
+#
+# Options:
+#   --from-fail-wrapper   Adjusts the stack trace level when called from `fail`.
+#
+# Arguments:
+#   <message>...  Error message to display, composed from all remaining arguments.
+#
+# ### Examples
+#
+# softfail "An unexpected error occurred."
+# softfail --from-fail-wrapper "This message was passed" "through the fail function."
+#
+softfail() {
+  local i trace_start=1 # Stack trace starts at this level
+
+  if [ "${1:-}" = "--from-fail-wrapper" ]; then
+    shift
+    trace_start=2
+  fi
+
+  # Display the error message and any additional arguments to stderr
+  echo "${1:-"An error occurred; refer to the stack trace for context."}" "${@:2}" >&2
+
+  # Provide a stack trace of function calls
+  for (( i=trace_start; i <= ${#BASH_LINENO[@]}-1; i++ )); do
+    echo "    at ${FUNCNAME[i]} (${BASH_SOURCE[i]}:${BASH_LINENO[i-1]})" >&2
+  done
+
+  return 1
+}
+
+# ## `grep::filter`
+#
+# Filters out lines that match the specified patterns using `grep`.
+# If no lines are found, it exits with status 0 without triggering an error.
+#
+# ### Usage
+#
+# grep::filter ARGUMENTS...
+#
+# Arguments:
+#   ARGUMENTS...  Any valid `grep` arguments or options.
+#
+# ### Examples
+#
+# grep::filter -E "DEBUG|TRACE" file1.log file2.log
+#
+grep::filter () {
+  grep -v "$@" || [ $? = 1 ]
+}
+
+# ## `platform::config_home`
+#
+# Determines the platform-specific configuration home directory.
+#
+# This function checks the `OSTYPE` environment variable to identify the
+# operating system and then outputs the conventional path for user-specific
+# application configuration files. It supports Linux, macOS, and
+# Windows.
+#
+# ### Usage
+#
+# platform::config_home
+#
+platform::config_home() {
+  # Determine configuration directory based on the operating system type
+  case "${OSTYPE}" in
+    linux*)
+      # For Linux, use XDG_CONFIG_HOME or default to ~/.config
+      echo "${XDG_CONFIG_HOME:-"${HOME}/.config"}"
+      ;;
+    darwin*)
+      # For macOS, use ~/Library/Application Support
+      echo "${HOME}/Library/Application Support"
+      ;;
+    msys*|cygwin*)
+      # For Windows, use APPDATA
+      echo "${APPDATA}"
+      ;;
+    *)
+      # If the platform is not recognized, report a soft failure
+      softfail "The operating system platform is not supported."
+      return 1
+      ;;
+  esac
+}
+
+# ## `platform::copy_to_clipboard`
+#
+# Copies standard input to the system clipboard.
+#
+# This function attempts to use various clipboard tools (wl-copy, xclip,
+# pbcopy) in a preferred order. If none of these tools are available,
+# it prints the input to standard output as a fallback.
+#
+# ### Usage
+#
+# platform::copy_to_clipboard
+#
+platform::copy_to_clipboard() {
+  # Attempt to use wl-copy (Wayland-based Linux) if available
+  if command -v wl-copy >/dev/null 2>&1; then
+    wl-copy || softfail "Could not access the clipboard using wl-copy." || return 1
+
+  # Else, attempt to use xclip (X11-based Linux) if available
+  elif command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard || softfail "Could not access the clipboard using xclip." || return 1
+
+  # Else, attempt to use pbcopy (macOS) if available
+  elif command -v pbcopy >/dev/null 2>&1; then
+    pbcopy || softfail "Could not access the clipboard using pbcopy." || return 1
+  
+  # Attempt to use clip (Windows) if available
+  elif command -v clip >/dev/null 2>&1; then
+    clip || softfail "Could not access the clipboard using clip." || return 1
+
+  # If no clipboard tool is found, print to standard output
+  else
+    echo "No clipboard tool was found. Printing to standard output instead:" >&2
+    cat || softfail "Failed to read from stdin." || return 1
+    
+    # This is not necessarily an error since the data was displayed
+    return
+  fi
+
+  # Notify the user of the successful operation
+  echo "Copied to clipboard." >&2
+}
+
+# ## `shell::argument_exists`
 #
 # Checks if a specific argument is present in a list of provided arguments.
 #
@@ -70,7 +182,7 @@ chatgpt_limit=139000
 #
 # ### Usage
 #
-# is_any_argument <argument-to-find> [<arguments-to-search-in>...]
+# shell::argument_exists <argument-to-find> [<arguments-to-search-in>...]
 #
 # Arguments:
 #   <argument-to-find>        The argument to search for in the list
@@ -78,10 +190,10 @@ chatgpt_limit=139000
 #
 # ### Examples
 #
-# is_any_argument "--help" "--help" "-v" "--config"
-# is_any_argument "test" "run" "build" "test"
+# shell::argument_exists "--help" "--help" "-v" "--config"
+# shell::argument_exists "test" "run" "build" "test"
 #
-is_any_argument() {
+shell::argument_exists() {
   local arg
   # Iterate over arguments starting from the second one
   for arg in "${@:2}"; do
@@ -92,180 +204,147 @@ is_any_argument() {
   return 1
 }
 
-# ## `copy_to_clipboard`
+# ## `shell::is_pipe_good`
 #
-# Copies standard input to the system clipboard.
+# Checks if all components of a pipeline completed successfully.
 #
-# This function attempts to use various clipboard tools (wl-copy, xclip,
-# pbcopy) in a preferred order. If none of these tools are available,
-# it prints the input to standard output as a fallback.
+# This function verifies the exit status of each command in a pipeline
+# using the `PIPESTATUS` array. It returns true (0) if all commands
+# succeeded, and false (1) otherwise.
 #
 # ### Usage
 #
-# copy_to_clipboard
+# shell::is_pipe_good
 #
-copy_to_clipboard() {
-  # Attempt to use wl-copy if available
-  if command -v wl-copy >/dev/null 2>&1; then
-    wl-copy || { echo "Could not access the clipboard using wl-copy." >&2; return 1; }
-
-  # Else, attempt to use xclip if available
-  elif command -v xclip >/dev/null 2>&1; then
-    xclip -selection clipboard || { echo "Could not access the clipboard using xclip." >&2; return 1; }
-
-  # Else, attempt to use pbcopy if available
-  elif command -v pbcopy >/dev/null 2>&1; then
-    pbcopy || { echo "Could not access the clipboard using pbcopy." >&2; return 1; }
-  
-  # If no clipboard tool is found, print to standard output
-  else
-    echo "No compatible clipboard tool found. Printing to standard output instead:" >&2
-    cat || { echo "Could not read from standard input using cat." >&2; return 1; }
-    return # Indicates that data was output via cat, not necessarily an error
-  fi
-
-  # Confirm that the prompt was successfully copied to the clipboard
-  echo "Prompt copied to the clipboard." >&2
+shell::is_pipe_good () {
+  ! [[ "${PIPESTATUS[*]}" =~ [^[:space:]0] ]]
 }
 
-# ## `query_language_model`
+# ## `query::gemini`
 #
-# Send a prompt to the language model API and retrieves the plain-text response.
+# Send a prompt to the Gemini language model API and retrieve the plain-text response.
 #
 # This function reads a prompt from `stdin`, wraps it in a JSON payload, calls the specified
 # model with `curl`, then pipes the result through `jq` to pull out the generated text.
 #
 # ### Usage
 #
-# query_language_model <model-type> <model-name>
+# query::gemini <model-name>
 #
 # Arguments:
-#   <model-type>  The type of the model, e.g. `gemini`
-#   <model-name>  The specific model identifier, e.g. `gemini-2.0-flash`
+#   <model-name>  The specific model identifier.
+#                 If not provided, defaults to `gemini-2.0-flash`.
+#
+# Available model names can be found at: https://ai.google.dev/gemini-api/docs/models
 #
 # ### Examples
 #
-# echo "Explain quantum computing in simple terms." | query_language_model gemini gemini-2.0-flash
+# echo "Do yesternights linger in dreamworn veils?" | query::gemini gemini-2.0-flash
 #
-query_language_model() {
-  # Assign the model type and name provided as arguments
-  local model_type="$1"
-  local model_name="$2"
+query::gemini() {
+  # Assign the model name provided as an argument or use the default
+  local model_name="${1:-"gemini-2.0-flash"}"
 
   # Declare local variables
-  local command_array
   local input_text_json
-  local model_name_human
-  local request_body
-  local request_body_template
-  local request_url
   local response_body
-  local response_error_filter
-  local response_filter
 
-  # Determine the API endpoint based on the model type
-  case "${model_type}" in
-    gemini)
-      # Check if the Gemini API key is available as an environment variable
-      if [ -z "${GEMINI_API_KEY:-}" ]; then
-        echo "The GEMINI_API_KEY environment variable is not set. Unable to query the model." >&2
-        return 1
-      fi
+  # Check if the Gemini API key is set in the environment
+  if [ -z "${GEMINI_API_KEY:-}" ]; then
+    echo "The GEMINI_API_KEY environment variable is not set. Please configure it before querying the model." >&2
+    return 1
+  fi
 
-      # Construct the API URL for the request using the model name and API key
-      request_url="https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}"
-      
-      # Create the JSON-formatted request body template with the placeholder for input text
-      request_body_template='{"contents": [{"role": "user", "parts":[{"text": %s}]}]}'
+  # Prepare the input text as a JSON string using jq
+  # This handles special characters and ensures proper formatting
+  input_text_json=$(jq --exit-status --ascii-output --raw-input --slurp .) ||
+    softfail "Failed to convert the input text to JSON format using 'jq'." || return 1
 
-      # Define the jq filter to extract the generated text from the API response
-      response_filter='.candidates[].content.parts[].text'
-      
-      # Define the jq filter to extract the error message if the API request fails
-      response_error_filter='.error.message'
-      ;;
-    aichat|llm|ollama|sgpt)
-      # Initialize the human-readable model name with the original model name value
-      model_name_human="${model_name}"
+  # Notify the user about the model being queried
+  echo "Sending request to the language model '${model_name}'..." >&2
 
-      # Populate the command array based on the specified model type
-      case "${model_type}" in
-        aichat|llm|sgpt)
-          # For 'aichat', 'llm', and 'sgpt', the command is simply the model type itself
-          command_array=("${model_type}")
-
-          # Check if a specific model name is provided
-          if [ "${model_name}" != "--" ]; then
-            # Append the model name to the command array if it is specified (not "--")
-            command_array+=(--model "${model_name}")
-          else
-            # Assign "default" as a user-friendly label if the model name is not provided
-            model_name_human=default
-          fi
-        ;;
-        ollama)
-          # For 'ollama', the command is "ollama run" followed by the model name
-          command_array=(ollama run "${model_name}")
-        ;;
-      esac
-
-      # Display information about the request being sent to the specified model and command
-      echo "Sending request to '${model_type}' command with language model '${model_name_human}'..." >&2
-
-      # Run the command with the constructed arguments and handle any errors if it fails
-      "${command_array[@]}" || {
-        echo "Failed to run '${model_type}' with model '${model_name_human}'." >&2
-        return 1
-      }
-
-      # Return the status code of the previous command to propagate its outcome
-      return
-      ;;
-    *)
-      echo "Unsupported model type '${model_type}'." >&2
-      return 1
-      ;;
-  esac
-
-  # Prepare the input text by converting it to a JSON string value using jq
-  # This ensures special characters are correctly escaped for the JSON payload
-  input_text_json=$(jq --ascii-output --raw-input --slurp .) ||
-    { echo "Failed to convert input text to JSON format using 'jq'." >&2; return 1; }
-
-  # Build the request body from the template
-  # shellcheck disable=SC2059
-  printf -v request_body "${request_body_template}" "${input_text_json}" ||
-    { echo "Failed to construct the request body from the template." >&2; return 1; }
-
-  # Inform the user which model is being queried
-  echo "Sending request to language model '${model_name}' (${model_type})..." >&2
-
-  # Send the HTTP POST request to the language model API using curl
-  # Capture the output and check the exit status of the curl command
-  if response_body="$(curl "${request_url}" \
+  # Send the request to the Gemini language model API using curl
+  # Capture the response for further processing and check the exit status of the curl command
+  if response_body="$(curl "https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}" \
     --request POST \
     --header 'Content-Type: application/json' \
-    --data @- <<<"${request_body}" \
+    --data @- <<<'{"contents": [{"role": "user", "parts":[{"text": '"${input_text_json}"'}]}]}' \
     --fail-with-body \
     --show-error \
     --silent)"
   then
-    # Successfully received a response from the API
-
-    # Extract the plain text content from the candidates array in the JSON response
-    <<<"${response_body}" jq --raw-output "${response_filter}" ||
-      { echo "Failed to extract content from the response for model '${model_name}' (${model_type})." >&2; return 1; }
+    # If the request is successful, extract the plain-text content from the response
+    jq --exit-status --raw-output '.candidates[].content.parts[].text' <<<"${response_body}" ||
+      softfail "Failed to extract the content from the response for model '${model_name}'." || return 1
   else
-    # An error occurred during the API request
-    echo "Could not retrieve a response from the language model '${model_name}' (${model_type})." >&2
+    # If the request fails, inform the user
+    echo "Could not retrieve a response from the language model '${model_name}'." >&2
 
-    # Attempt to extract and display the specific error message from the API response
-    <<<"${response_body}" jq --raw-output "${response_error_filter}" >&2 ||
-      { echo "Failed to parse the error response from language model '${model_name}' (${model_type})." >&2; return 1; }
+    # Try to parse and display the specific error message returned by the API
+    jq --exit-status --raw-output '.error.message' <<<"${response_body}" >&2 ||
+      softfail "Failed to parse the error response from the language model '${model_name}'." || return 1
 
     # Return a non-zero status code to indicate failure
     return 1
   fi
+}
+
+# ## `query_models`
+#
+# Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
+# If a model command is found and responds successfully, its response is returned and the function exits.
+#
+# ### Usage
+#
+# query_models
+#
+query_models() {
+  local model_list model_array model_item command_raw command_array response
+
+  # Extract the list of model preferences from the configuration JSON
+  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${config_json}")" ||
+    fail "Failed to extract model preferences from the configuration."
+
+  # Read the list of models into an array
+  readarray -t model_array <<<"${model_list}" ||
+    fail "Failed to read model preferences into an array."
+
+  # Iterate over each model preference
+  for model_item in "${model_array[@]}"; do
+    # Convert the JSON array to a shell-compatible string representation
+    command_raw="$(jq --exit-status --raw-output '. | @sh' <<<"${model_item}")" ||
+      fail "Failed to process model preference item into a shell-compatible string."
+
+    # Use eval to support newlines in arguments when expanding the array
+    eval "command_array=(${command_raw})" ||
+      fail "Failed to convert model preference item to a command array."
+
+    # Verify if the command exists before attempting to run it
+    if ! command -v "${command_array[0]}" >/dev/null; then
+      if config::is_enabled report_missing_commands; then
+        echo "Could not find the command specified in the model preferences list: ${command_array[0]}" >&2
+      fi
+      continue
+    fi
+
+    # Log the outgoing request with model command details
+    if ! declare -F "${command_array[0]}" > /dev/null; then
+      echo "Invoking language model command: ${command_array[*]}..." >&2
+    fi
+
+    # Run the model command with the provided prompt and capture the response
+    if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
+      echo "Failed to retrieve a valid response from model: ${command_array[*]}" >&2
+      continue
+    fi
+
+    # Output the response and exit the loop
+    echo "${response}"
+    return
+  done
+
+  # If no model succeeded, return with failure status
+  return 1
 }
 
 # ## `make_prompt`
@@ -294,12 +373,12 @@ make_prompt() {
   local context_messages=12
 
   # If the "short" keyword is provided, reduce the number of context messages
-  if is_any_argument short "$@"; then
+  if shell::argument_exists short "$@"; then
     context_messages=4
   fi
 
   # Begin constructing the prompt with formatting instructions and guidelines
-  cat <<EOF
+  cat <<'EOF' || fail "Could not output the data."
 Based on the changes described in the diff below, write a commit message.
 
 * Follow these formatting rules:
@@ -325,17 +404,22 @@ Based on the changes described in the diff below, write a commit message.
 * Keep the message readable and precise - brief but not overly minimal
 * Output only the result - do not add any introductory or closing remarks
 
-For context, here are the last ${context_messages} commit messages:
+For context, here are the most recent commit messages:
 
-\`\`\`
+```
 EOF
 
   # Append the last ${context_messages} commit messages
   # Filter out "Signed-off-by" lines and remove excessive blank lines
   # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
-  git log -n "${context_messages}" --pretty=format:"%B" | grep -v "^Signed-off-by:" | sed '/^$/N;/^\n$/D'
+  git log -n "${context_messages}" --pretty=format:"%B" |
+    grep::filter "^Signed-off-by:" |
+    sed '/^$/N;/^\n$/D'
 
-  cat <<'EOF'
+  # Verify that the pipe operation was successful
+  shell::is_pipe_good || fail "Could not retrieve or process commit messages."
+
+  cat <<'EOF' || fail "Could not output the data."
 ```
 
 Below is the diff showing the changes that are to be included in the commit itself:
@@ -344,17 +428,132 @@ Below is the diff showing the changes that are to be included in the commit itse
 EOF
 
   # Append the diff of staged changes to the prompt
-  if is_any_argument short "$@"; then
+  if shell::argument_exists short "$@"; then
     # Use a minimal diff if 'short' argument is provided
-    git diff --diff-algorithm=minimal --no-color --cached
+    git diff --diff-algorithm=minimal --no-color --cached ||
+      fail "Could not generate a minimal diff."
+
     echo "A short prompt was generated." >&2
   else
     # Otherwise, use a more detailed histogram diff with function context
-    git diff --diff-algorithm=histogram --no-color --cached --function-context -U15
+    git diff --diff-algorithm=histogram --no-color --cached --function-context -U15 ||
+      fail "Could not generate a detailed diff."
   fi
 
   # Close the commit messages section
   echo '```'
+}
+
+# ## `config::load`
+#
+# Loads configuration from a JSON file or sets a default if the file is not found.
+#
+# This function attempts to retrieve the path to the configuration file and read its
+# contents, ignoring commented lines. If the file is not found, it initializes a default
+# configuration instead.
+#
+# ### Usage
+#
+# config::load
+#
+# No arguments or options are required.
+#
+config::load() {
+  local config_path
+
+  # Retrieve the path to the configuration file
+  config_path="$(platform::config_home)/commit-prompt.json" ||
+    fail "Failed to determine the configuration path."
+
+  # Check if the configuration file exists and read its contents
+  if [ -f "${config_path}" ]; then
+    # Load the configuration, filtering out commented lines
+    config_json="$(grep::filter -E '^\s*//' "${config_path}")" ||
+      fail "Failed to read the configuration file."
+
+    return
+  fi
+
+  # Set the default configuration if the file does not exist
+  config_json="$(cat <<JSON
+{
+  "copy_prompt": true,
+  "copy_response": false,
+  "interactive_prompt_limit": 139000,
+  "query_language_model": true,
+  "report_missing_commands": false,
+  "commit_with_template": true,
+  "model_preferences": [
+    ["aichat"],
+    ["llm"],
+    ["sgpt"],
+    ["query::gemini", "gemini-2.5-flash-preview-04-17"],
+    ["query::gemini", "gemini-2.0-flash"],
+    ["query::gemini", "gemini-2.0-flash-lite"]
+  ]
+}
+JSON
+    )" || fail "Failed to initialize the default configuration."
+}
+
+# ## `config::is_enabled`
+#
+# Checks if a given configuration key is enabled.
+#
+# This function retrieves a boolean value for the specified configuration key from the JSON configuration.
+# If the key is not found, it returns the provided default value (default: "true").
+#
+# ### Usage
+#
+# config::is_enabled <key> [<default>]
+#
+# Arguments:
+#   <key>              The configuration key to check.
+#   <default>          Optional default value if the key is not present (default: "true").
+#
+# ### Examples
+#
+# config::is_enabled "feature_enabled" "false"
+#
+config::is_enabled() {
+  local key="$1"
+  local default="${2:-"true"}"
+  local value
+
+  # Retrieve the value from the configuration JSON. If not found, use the default value.
+  value="$(jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}")" ||
+    fail "Could not retrieve the '${key}' setting from the configuration."
+
+  # Return true if the value is explicitly true.
+  [ "${value}" = true ]
+}
+
+# ## `config::get`
+#
+# Retrieves a value from the configuration for the specified key.
+#
+# This function fetches the value associated with the specified key from the JSON configuration.
+# If the key is not found, it returns the provided default value instead.
+#
+# ### Usage
+#
+# config::get <key> [<default>]
+#
+# Arguments:
+#   <key>              The configuration key to retrieve.
+#   <default>          Optional default value if the key is not present.
+#
+# ### Examples
+#
+# config::get "database.host" "localhost"
+#
+config::get() {
+  local key="$1"
+  local default="${2:-"null"}"
+
+  # Retrieve the value from the configuration JSON, or fall back to the default if not found.
+  jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}" ||
+    fail "Could not retrieve the '${key}' setting from the configuration."
 }
 
 # ## `display_help`
@@ -370,11 +569,8 @@ EOF
 # display_help
 #
 display_help() {
-  # Get the script's base name for the usage instructions
-  local script_name; script_name="$(basename "$0")"
-
-  cat <<EOF
-Usage: ${script_name:-"commit-prompt"} [COMMAND...]
+  cat <<EOF || fail "Could not output the data."
+Usage: ${BASH_SOURCE[0]##*/} [COMMAND...]
 
 Generates a commit message suggestion based on staged Git changes by
 querying the Large Language Model (LLM).
@@ -382,90 +578,140 @@ querying the Large Language Model (LLM).
 The suggested message is then used to prepare a Git commit.
 
 Commands:
+
   short          Generates a more concise prompt. This involves using a minimal
                  diff of staged changes, which can be helpful if the default
-                 prompt is too long for the AI model's input limits.
+                 prompt is too long for the language model's input limits.
 
   copy           Generates the prompt and copies it to the system clipboard,
-                 then exits. This option bypasses querying the AI model,
+                 then exits. This option bypasses querying the language model,
                  allowing you to use the prompt elsewhere or review it manually.
+
+  result         Queries the language model and copies the response to the
+                 system clipboard without making a Git commit.
 
   help, -h, --help
                  Displays this help message and exits.
 
-Behavior:
-- If no commands are given, the script generates a full prompt, queries the
-  LLM, and then opens 'git commit' with the AI-suggested message.
-- The commands 'short' and 'copy' can be specified in any order.
+  The commands can be specified in any order.
 
 Requirements:
-- Git must be installed and used in a Git repository.
-- The GEMINI_API_KEY environment variable must be set to query the Gemini.
+
+* Requires Git and must be run inside a Git repository.
+* The GEMINI_API_KEY environment variable must be set to query the Gemini.
 EOF
 }
 
-# Main script starts here
+# ## `main_script`
+#
+# Main script to handle configuration, prompt generation, and model querying.
+#
+# ### Usage
+#
+# main_script [<arguments>...]
+#
+# Arguments:
+#   short    Attempt to use a shorter prompt if the generated one is too long
+#   copy     Skip querying the models and only copy the prompt to the clipboard
+#   result   Copy the language model response to the clipboard and skip further processing
+#
+# ### Examples
+#
+# main_script copy
+# main_script result
+# main_script short
+# main_script short copy
+# main_script short result
+#
+main_script() {
+  local config_json
+  local interactive_prompt_limit
+  local prompt
+  local response
 
-# Check for help argument first; this takes precedence
-if is_any_argument "help" "$@" || is_any_argument "--help" "$@" || is_any_argument "-h" "$@"; then
-  display_help
-  exit 0
-fi
-
-# Check if there are any changes staged for commit
-if git diff --cached --quiet; then
-  echo "No changes have been staged for commit." >&2
-  exit 1
-fi
-
-# Generate the prompt using staged changes and commit history
-# Pass all script arguments to make_prompt for 'short' keyword detection
-prompt="$(make_prompt "$@")"
-
-# Check if the generated prompt exceeds ChatGPT's web interface length limit.
-# The script continues even if the prompt is too long, allowing clipboard copy
-if (( "${#prompt}" > chatgpt_limit )); then
-  if is_any_argument short "$@"; then
-    # Message displayed if the 'short' argument is used but the prompt is still too long
-    echo "The prompt remains too long for ChatGPT's limit, even with the 'short' option." >&2
-  else
-    # Suggest using the 'short' argument if the prompt is too long
-    echo "The prompt exceeds ChatGPT's length limit. To reduce its size, consider running:" >&2
-    echo "  $(basename "$0") short" >&2
+  # Display help information if the help flag is present
+  if shell::argument_exists "help" "$@" ||
+    shell::argument_exists "--help" "$@" ||
+    shell::argument_exists "-h" "$@"
+  then
+    display_help
+    return
   fi
-fi
 
-# Copy the generated prompt to the system clipboard
-<<<"${prompt}" copy_to_clipboard
-
-# If 'copy' argument is present, skip querying the language model and exit
-if is_any_argument copy "$@"; then
-  echo "The 'copy' argument was provided; skipping query to the language model." >&2
-  exit
-fi
-
-# Initialize the success flag to false - this flag will be used to track if 
-# at least one language model query was successful during the loop iteration.
-success=false
-
-# Loop through the array with a step of 2
-for ((i = 0; i < ${#models[@]}; i += 2)); do
-  model_type="${models[i]}"
-  model_name="${models[i + 1]}"
-
-  # Attempt to query the language model with the specified type and name
-  if response="$(query_language_model "${model_type}" "${model_name}" <<<"${prompt}")"; then
-    success=true
-    break
+  # Verify that the current directory is within a Git repository
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; then
+    echo "The current directory is not part of a Git repository." >&2
+    return 1
   fi
-done
 
-# Check if no model succeeded based on the exit status
-if [ "${success}" = false ]; then
-  echo "Failed to retrieve a response from all specified language models." >&2
-  exit 1
-fi
+  # Confirm that changes have been staged for commit
+  if git diff --cached --quiet; then
+    echo "No changes have been staged for commit." >&2
+    return
+  fi
 
-# Use the response from the language model as a template for the git commit message
-echo "Making a commit with the response as the template..." >&2
-git commit --template <(echo "${response}")
+  # Load the configuration
+  config::load || fail "Failed to load the configuration."
+
+  # Generate the prompt using the staged changes and commit history
+  # Pass all script arguments to make_prompt for 'short' keyword detection
+  prompt="$(make_prompt "$@")" || fail "Failed to generate the prompt."
+
+  # Retrieve the interactive prompt limit from the configuration JSON or default to 139000
+  interactive_prompt_limit="$(config::get interactive_prompt_limit 139000)" ||
+    fail "Could not retrieve the interactive prompt limit from the configuration."
+
+  # Check if the generated prompt exceeds the maximum length for interactive use
+  if (( "${#prompt}" > interactive_prompt_limit )); then
+    if shell::argument_exists short "$@"; then
+      echo "The prompt remains too long for interactive use, even with the 'short' argument." >&2
+    else
+      echo "The prompt exceeds the interactive use length limit. To shorten it, use the 'short' argument:" >&2
+      echo "  ${BASH_SOURCE[0]##*/} short" >&2
+    fi
+  fi
+
+  # Copy the prompt to the clipboard if the 'copy_prompt' setting is enabled and no 'result' argument is provided
+  if config::is_enabled copy_prompt && ! shell::argument_exists result "$@"; then
+    platform::copy_to_clipboard <<<"${prompt}" ||
+      softfail "Could not copy the prompt to the clipboard."
+  fi
+
+  # If the 'copy' argument is present, skip querying the language model and return
+  if shell::argument_exists copy "$@"; then
+    echo "The 'copy' argument was provided; skipping the query to the language model." >&2
+    return
+  fi
+
+  # Skip querying the language model if the configuration is disabled
+  if ! config::is_enabled query_language_model; then
+    echo "The 'query_language_model' setting is disabled; skipping the query to the language model." >&2
+    return
+  fi
+
+  # Query available language models with the generated prompt
+  response="$(query_models "$@")" || fail "Could not query any of the available language models."
+
+  # If the 'result' argument is provided, copy the response to the clipboard and return
+  if shell::argument_exists result "$@"; then
+    platform::copy_to_clipboard <<<"${response}" ||
+      softfail "Could not copy the language model response to the clipboard."
+    return
+  fi
+
+  # Copy the response to the clipboard if the setting is enabled
+  if config::is_enabled copy_response false; then
+    platform::copy_to_clipboard <<<"${response}" ||
+      softfail "Could not copy the language model response to the clipboard."
+  fi
+
+  # Create a Git commit using the model's response if the setting is enabled
+  if config::is_enabled commit_with_template; then
+    echo "Creating a Git commit with the response as the template..." >&2
+    git commit --template <(echo "${response}") ||
+      fail "Failed to create a commit with the provided template."
+  fi
+}
+
+# Call the main script
+main_script "$@"
