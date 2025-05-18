@@ -423,43 +423,61 @@ make_prompt() {
 
   # Begin constructing the prompt with formatting instructions and guidelines
   cat <<'EOF' || fail "Could not output the data."
-Based on the changes described in the diff below, write a commit message.
+Based on the changes described in the diff below, write a commit message adhering to the following guidelines:
 
-* Follow these formatting rules:
-  * The first line must be a concise summary of the entire commit
-    * Limit: 50 characters maximum
-    * Do not prefix it with '#'
-  * The commit body must follow the summary
-    * Format: Markdown using '*' as the bullet symbol
-    * Do not use bold, italic, or other text formatting
-    * Do not include any trailing whitespace
-    * Limit: 72 characters per line
-  * Commit message should start with a capital letter
+## Summary:
 
-* In writing commit message ensure:
-  * Clarity, conciseness, and fluency
-  * Consistent and formal terminology throughout
+* The first line should be a concise summary of the commit.
 
-* Avoid:
-  * Redundancy, cliches, and unnecessary embellishments
-  * Overly terse, overly literal, or informal phrasing
+  * Limit: 50 characters maximum.
+  * Written in plain text - no markdown headers or special formatting.
+  * Must start with a capital letter.
+  * Ensure there is no trailing whitespace.
 
-* Use clear, direct, and professional English with formal tone
-* Keep the message readable and precise - brief but not overly minimal
-* Output only the result - do not add any introductory or closing remarks
+
+## Commit body:
+
+* Follow the summary with a detailed explanation:
+
+  * Use plain text with a list format, prefixed with '*' for bullets.
+  * Avoid markdown headings, hyperlinks (only plain URLs), or any other styling.
+  * Keep list items compact with no visual breaks or trailing whitespace.
+  * Limit each line to 72 characters.
+  * Begin each bullet with a capital letter.
+
+## Writing principles:
+
+* Ensure clarity, conciseness, and fluency.
+* Use consistent, formal terminology.
+* Maintain a professional and direct tone.
+* Avoid redundancy, cliches, and unnecessary embellishments.
+* Avoid unnecessary elaboration.
+* Focus on clarity and substance, avoiding repetition or redundant explanations.
+* If further detail is required, make it specific and directly relevant.
+
+## Do not:
+
+* Use bold, italic, or other markdown styles.
+* Use overly terse, literal, or informal phrasing.
+
+## Output format:
+
+* Provide only the formatted commit message, without any additional remarks.
 EOF
 
   if git rev-parse --verify HEAD >/dev/null 2>&1; then
     cat <<'EOF' || fail "Could not output the data."
 
-For context, here are the most recent commit messages:
+## Context
+
+Below are the most recent commit messages for reference:
 
 ```
 EOF
 
-    # Append the last ${context_messages} commit messages
-    # Filter out "Signed-off-by" lines and remove excessive blank lines
-    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line
+    # Append the last ${context_messages} commit messages.
+    # Filter out "Signed-off-by" lines and remove excessive blank lines.
+    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line.
     git log -n "${context_messages}" --pretty=format:"%B" |
       grep::filter "^Signed-off-by:" |
       sed '/^$/N;/^\n$/D'
@@ -472,7 +490,9 @@ EOF
 
   cat <<'EOF' || fail "Could not output the data."
 
-Below is the diff showing the changes that are to be included in the commit itself:
+## Diff
+
+The following diff represents the changes to be included in the new commit:
 
 ```
 EOF
