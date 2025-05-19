@@ -305,16 +305,16 @@ query::gemini() {
   fi
 }
 
-# ## `query_models`
+# ## `knitmit::query_models`
 #
 # Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
 # If a model command is found and responds successfully, its response is returned and the function exits.
 #
 # ### Usage
 #
-# query_models
+# knitmit::query_models
 #
-query_models() {
+knitmit::query_models() {
   local model_list model_array model_item command_raw command_array response
   local report_line deffered_report=()
 
@@ -391,7 +391,7 @@ query_models() {
   return 1
 }
 
-# ## `make_prompt`
+# ## `knitmit::make_prompt`
 #
 # Generates a structured prompt for a commit message based on Git changes.
 #
@@ -401,7 +401,7 @@ query_models() {
 #
 # ### Usage
 #
-# make_prompt [<keyword>]
+# knitmit::make_prompt [<keyword>]
 #
 # Arguments:
 #   [<keyword>]  Optional keyword. If "short", generates a prompt with
@@ -410,10 +410,10 @@ query_models() {
 #
 # ### Examples
 #
-# make_prompt
-# make_prompt short
+# knitmit::make_prompt
+# knitmit::make_prompt short
 #
-make_prompt() {
+knitmit::make_prompt() {
   local context_messages=12
 
   # If the "short" keyword is provided, reduce the number of context messages
@@ -627,7 +627,7 @@ config::get() {
     fail "Could not retrieve the '${key}' setting from the configuration."
 }
 
-# ## `display_help`
+# ## `knitmit::display_help`
 #
 # Displays the help message for the script.
 #
@@ -637,9 +637,9 @@ config::get() {
 #
 # ### Usage
 #
-# display_help
+# knitmit::display_help
 #
-display_help() {
+knitmit::display_help() {
   cat <<EOF || fail "Could not output the data."
 Usage: ${BASH_SOURCE[0]##*/} [COMMAND...]
 
@@ -673,13 +673,13 @@ Requirements:
 EOF
 }
 
-# ## `main_script`
+# ## `knitmit::main`
 #
 # Main script to handle configuration, prompt generation, and model querying.
 #
 # ### Usage
 #
-# main_script [<arguments>...]
+# knitmit::main [<arguments>...]
 #
 # Arguments:
 #   short    Attempt to use a shorter prompt if the generated one is too long
@@ -688,13 +688,13 @@ EOF
 #
 # ### Examples
 #
-# main_script copy
-# main_script result
-# main_script short
-# main_script short copy
-# main_script short result
+# knitmit::main copy
+# knitmit::main result
+# knitmit::main short
+# knitmit::main short copy
+# knitmit::main short result
 #
-main_script() {
+knitmit::main() {
   local config_json
   local interactive_prompt_limit
   local prompt
@@ -705,7 +705,7 @@ main_script() {
     shell::argument_exists "--help" "$@" ||
     shell::argument_exists "-h" "$@"
   then
-    display_help
+    knitmit::display_help
     return
   fi
 
@@ -725,8 +725,8 @@ main_script() {
   config::load || fail "Failed to load the configuration."
 
   # Generate the prompt using the staged changes and commit history
-  # Pass all script arguments to make_prompt for 'short' keyword detection
-  prompt="$(make_prompt "$@")" || fail "Failed to generate the prompt."
+  # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection
+  prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
 
   # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
   if config::is_enabled copy_prompt false || shell::argument_exists copy "$@"; then
@@ -764,7 +764,7 @@ main_script() {
   fi
 
   # Query available language models with the generated prompt
-  response="$(query_models "$@")" || fail "Could not query any of the available language models."
+  response="$(knitmit::query_models "$@")" || fail "Could not query any of the available language models."
 
   # If the 'result' argument is provided, copy the response to the clipboard and return
   if shell::argument_exists result "$@"; then
@@ -788,4 +788,4 @@ main_script() {
 }
 
 # Call the main script
-main_script "$@"
+knitmit::main "$@"
