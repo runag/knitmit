@@ -127,24 +127,25 @@ If the configuration file is not found, `knitmit` will use the following default
           ["sgpt", "--model", "gpt-3.5-turbo"]
         ]
         ```
-    *   **Supported Model Types/Commands:**
-        *   **`query::gemini`**: This is a special built-in function that sends API calls directly to Google's Gemini models using `curl`. It requires `GEMINI_API_KEY` to be set.
-            *   Example: `["query::gemini", "gemini-1.5-flash-latest"]`
-            *   Available Gemini model names: [https://ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
-        *   **Local CLI Tools (e.g., `aichat`, `llm`, `sgpt`, `ollama`):** Many command-line LLM tools can be used if they adhere to the `stdin` for prompt and `stdout` for response convention. You just need to specify the command and any necessary arguments to select the model.
-            *   **`aichat`**: Command-line interface for various language models.
-                *   Example: `["aichat", "--model", "MODEL_NAME"]` or `["aichat"]` (for default).
-                *   More details: [https://github.com/sigoden/aichat](https://github.com/sigoden/aichat)
-            *   **`llm`**: Command-line interface for language models by Simon Willison.
-                *   Example: `["llm", "--model", "MODEL_NAME"]` or `["llm", "-m", "MODEL_NAME"]` or `["llm"]` (for default).
-                *   More details: [https://github.com/simonw/llm](https://github.com/simonw/llm)
-            *   **`sgpt` (ShellGPT)**: Command-line interface for language models.
-                *   Example: `["sgpt", "--model", "MODEL_NAME"]` or `["sgpt"]` (for default).
-                *   More details: [https://github.com/tbckr/sgpt](https://github.com/tbckr/sgpt)
-            *   **`ollama`**: Command-line interface for running models locally with Ollama.
-                *   Example: `["ollama", "run", "MODEL_NAME"]` (A model name must be specified).
-                *   More details: [https://github.com/ollama/ollama](https://github.com/ollama/ollama)
-        *   For `query::gemini`, `knitmit` also checks for the `query::gemini::is_configured` function (which checks `GEMINI_API_KEY`). You can create similar `<command>::is_configured` bash functions in your environment if your custom tools require specific setup checks before being called. If this function exists and returns a non-zero status, `knitmit` will skip that model.
+**Supported Model Types/Commands:**
+
+*   **`query::gemini`**: This is a special built-in function that sends API calls directly to Google's Gemini models using `curl`. It requires `GEMINI_API_KEY` to be set.
+    *   Example: `["query::gemini", "gemini-1.5-flash-latest"]`
+    *   Available Gemini model names: [https://ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
+*   **Local CLI Tools (e.g., `aichat`, `llm`, `sgpt`, `ollama`):** Many command-line LLM tools can be used if they adhere to the `stdin` for prompt and `stdout` for response convention. You just need to specify the command and any necessary arguments to select the model.
+    *   **`aichat`**: Command-line interface for various language models.
+        *   Example: `["aichat", "--model", "MODEL_NAME"]` or `["aichat"]` (for default).
+        *   More details: [https://github.com/sigoden/aichat](https://github.com/sigoden/aichat)
+    *   **`llm`**: Command-line interface for language models by Simon Willison.
+        *   Example: `["llm", "--model", "MODEL_NAME"]` or `["llm", "-m", "MODEL_NAME"]` or `["llm"]` (for default).
+        *   More details: [https://github.com/simonw/llm](https://github.com/simonw/llm)
+    *   **`sgpt` (ShellGPT)**: Command-line interface for language models.
+        *   Example: `["sgpt", "--model", "MODEL_NAME"]` or `["sgpt"]` (for default).
+        *   More details: [https://github.com/tbckr/sgpt](https://github.com/tbckr/sgpt)
+    *   **`ollama`**: Command-line interface for running models locally with Ollama.
+        *   Example: `["ollama", "run", "MODEL_NAME"]` (A model name must be specified).
+        *   More details: [https://github.com/ollama/ollama](https://github.com/ollama/ollama)
+*   For `query::gemini`, `knitmit` also checks for the `query::gemini::is_configured` function (which checks `GEMINI_API_KEY`). You can create similar `<command>::is_configured` bash functions in your environment if your custom tools require specific setup checks before being called. If this function exists and returns a non-zero status, `knitmit` will skip that model.
 
 ## Usage
 
