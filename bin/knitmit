@@ -439,11 +439,14 @@ Based on the changes described in the diff below, write a commit message adherin
 
 * Follow the summary with a detailed explanation:
 
-  * Use plain text with a list format, prefixed with '*' for bullets.
-  * Avoid markdown headings, hyperlinks (only plain URLs), or any other styling.
-  * Keep list items compact with no visual breaks or trailing whitespace.
-  * Limit each line to 72 characters.
-  * Begin each bullet with a capital letter.
+  * Use Markdown, limiting formatting to lists prefixed with '*'.
+  * Use " " and ` ` where appropriate.
+  * Keep list items compact with no blank lines in between.
+  * Begin each bullet point with a capital letter.
+  * Avoid headings, or additional styling.
+  * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
+  * Ensure there is no trailing whitespace.
+  * Limit each line to a maximum of 72 characters.
 
 ## Writing principles:
 
