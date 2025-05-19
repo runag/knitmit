@@ -530,7 +530,7 @@ config::load() {
   local config_path
 
   # Retrieve the path to the configuration file
-  config_path="$(platform::config_home)/commit-prompt.json" ||
+  config_path="$(platform::config_home)/knitmit.json" ||
     fail "Failed to determine the configuration path."
 
   # Check if the configuration file exists and read its contents
