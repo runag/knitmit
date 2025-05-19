@@ -212,11 +212,12 @@ git knitmit help
 
 ## How the Prompt is Constructed
 
-The `make_prompt` function generates a detailed prompt for the LLM, including:
+The `knitmit::make_prompt` function generates a detailed prompt for the LLM, including:
 
-*   **Strict formatting guidelines:**
-    *   Summary: Max 50 chars, capitalized, no trailing whitespace, plain text.
-    *   Body: Plain text list format (`*` prefix), max 72 chars per line, capitalized bullets, no markdown.
+*   **Structure:**
+    *   **Summary Line:** The first line must be a concise summary (max 50 chars), plain text, capitalized, and with no trailing whitespace.
+    *   **Body:** Follows the summary, providing a detailed explanation. Lines are limited to 72 characters.
+*   **Formatting (Body):** Uses Markdown, but strictly limited to bulleted lists (prefixed with `*`).
 *   **Writing principles:** Emphasizes clarity, conciseness, formal tone, and avoidance of redundancy.
 *   **Context:**
     *   Recent commit messages (last 12 by default, 4 if `short` is used) to provide context on project style and recent work.
