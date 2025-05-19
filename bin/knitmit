@@ -305,216 +305,64 @@ query::gemini() {
   fi
 }
 
-# ## `knitmit::query_models`
+# ## `config::get`
 #
-# Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
-# If a model command is found and responds successfully, its response is returned and the function exits.
+# Retrieves a value from the configuration for the specified key.
 #
-# ### Usage
-#
-# knitmit::query_models
-#
-knitmit::query_models() {
-  local model_list model_array model_item command_raw command_array response
-  local report_line deffered_report=()
-
-  # Extract the list of model preferences from the configuration JSON
-  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${config_json}")" ||
-    fail "Failed to extract model preferences from the configuration."
-
-  # Read the list of models into an array
-  readarray -t model_array <<<"${model_list}" ||
-    fail "Failed to read model preferences into an array."
-
-  # Iterate over each model preference
-  for model_item in "${model_array[@]}"; do
-    # Convert the JSON array to a shell-compatible string representation
-    command_raw="$(jq --exit-status --raw-output '. | @sh' <<<"${model_item}")" ||
-      fail "Failed to process model preference item into a shell-compatible string."
-
-    # Use eval to support newlines in arguments when expanding the array
-    eval "command_array=(${command_raw})" ||
-      fail "Failed to convert model preference item to a command array."
-
-    # Verify if the command exists before attempting to run it
-    if ! command -v "${command_array[0]}" >/dev/null; then
-      if config::is_enabled report_unavailable_commands false; then
-        echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
-      else
-        deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
-      fi
-      # Skip the rest of the loop and proceed with the next iteration
-      continue
-    fi
-
-    # Check if the '<command>::is_configured' function exists in the current environment
-    if declare -F "${command_array[0]}::is_configured" > /dev/null; then
-      # If the function exists, invoke it to check if the command is configured properly
-      if ! "${command_array[0]}::is_configured"; then
-        # If the command is not configured and reporting is enabled, display a message
-        if config::is_enabled report_unavailable_commands false; then
-          echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
-        else
-          deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
-        fi
-        # Skip the rest of the loop and proceed with the next iteration
-        continue
-      fi
-    fi
-    
-    # Log the outgoing request with model command details
-    if ! declare -F "${command_array[0]}" > /dev/null; then
-      echo "Invoking language model command: ${command_array[*]}..." >&2
-    fi
-
-    # Run the model command with the provided prompt and capture the response
-    if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
-      echo "Model command failed with a non-zero exit status: ${command_array[*]}" >&2
-      # Skip the rest of the loop and proceed with the next iteration
-      continue
-    fi
-
-    # Output the response and exit the loop
-    echo "${response}"
-    return
-  done
-
-  # Inform the user that additional issues were reported during the model querying process
-  echo "Additionally, during model querying, the following was reported:" >&2
-
-  # Loop through the deferred report array and display each line
-  for report_line in "${deffered_report[@]}"; do
-    echo "${report_line}" >&2
-  done
-
-  # If no model succeeded, return with failure status
-  return 1
-}
-
-# ## `knitmit::make_prompt`
-#
-# Generates a structured prompt for a commit message based on Git changes.
-#
-# This function creates a detailed prompt by analyzing staged Git changes
-# (diff) and recent commit history. If the "short" keyword is provided as an
-# argument, it generates a more concise prompt using a minimal diff.
+# This function fetches the value associated with the specified key from the JSON configuration.
+# If the key is not found, it returns the provided default value instead.
 #
 # ### Usage
 #
-# knitmit::make_prompt [<keyword>]
+# config::get <key> [<default>]
 #
 # Arguments:
-#   [<keyword>]  Optional keyword. If "short", generates a prompt with
-#                minimal diff context. Otherwise, a more detailed diff
-#                and recent commit history are included.
+#   <key>              The configuration key to retrieve.
+#   <default>          Optional default value if the key is not present.
 #
 # ### Examples
 #
-# knitmit::make_prompt
-# knitmit::make_prompt short
+# config::get "database.host" "localhost"
 #
-knitmit::make_prompt() {
-  local context_messages=12
+config::get() {
+  local key="$1"
+  local default="${2:-"null"}"
 
-  # If the "short" keyword is provided, reduce the number of context messages
-  if shell::argument_exists short "$@"; then
-    context_messages=4
-  fi
+  # Retrieve the value from the configuration JSON, or fall back to the default if not found.
+  jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}" ||
+    fail "Could not retrieve the '${key}' setting from the configuration."
+}
 
-  # Begin constructing the prompt with formatting instructions and guidelines
-  cat <<'EOF' || fail "Could not output the data."
-Based on the changes described in the diff below, write a commit message adhering to the following guidelines:
+# ## `config::is_enabled`
+#
+# Checks if a given configuration key is enabled.
+#
+# This function retrieves a boolean value for the specified configuration key from the JSON configuration.
+# If the key is not found, it returns the provided default value (default: "true").
+#
+# ### Usage
+#
+# config::is_enabled <key> [<default>]
+#
+# Arguments:
+#   <key>              The configuration key to check.
+#   <default>          Optional default value if the key is not present (default: "true").
+#
+# ### Examples
+#
+# config::is_enabled "feature_enabled" "false"
+#
+config::is_enabled() {
+  local key="$1"
+  local default="${2:-"true"}"
+  local value
 
-## Summary:
+  # Retrieve the value from the configuration JSON. If not found, use the default value.
+  value="$(jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}")" ||
+    fail "Could not retrieve the '${key}' setting from the configuration."
 
-* The first line should be a concise summary of the commit.
-
-  * Limit: 50 characters maximum.
-  * Written in plain text - no markdown headers or special formatting.
-  * Must start with a capital letter.
-  * Ensure there is no trailing whitespace.
-
-
-## Commit body:
-
-* Follow the summary with a detailed explanation:
-
-  * Use Markdown, limiting formatting to lists prefixed with '*'.
-  * Use quotation marks (" ") and code formatting (` `) where appropriate.
-  * Keep list items compact with no blank lines in between.
-  * Begin each bullet point with a capital letter.
-  * Avoid headings, or additional styling.
-  * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
-  * Ensure there is no trailing whitespace.
-  * Limit each line to a maximum of 72 characters.
-
-## Writing principles:
-
-* Ensure clarity, conciseness, and fluency.
-* Use consistent, formal terminology.
-* Maintain a professional and direct tone.
-* Avoid redundancy, cliches, and unnecessary embellishments.
-* Avoid unnecessary elaboration.
-* Focus on clarity and substance, avoiding repetition or redundant explanations.
-* If further detail is required, make it specific and directly relevant.
-
-## Do not:
-
-* Use bold, italic, or other markdown styles.
-* Use overly terse, literal, or informal phrasing.
-
-## Output format:
-
-* Provide only the formatted commit message, without any additional remarks.
-EOF
-
-  if git rev-parse --verify HEAD >/dev/null 2>&1; then
-    cat <<'EOF' || fail "Could not output the data."
-
-## Context
-
-Below are the most recent commit messages for reference:
-
-```
-EOF
-
-    # Append the last ${context_messages} commit messages.
-    # Filter out "Signed-off-by" lines and remove excessive blank lines.
-    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line.
-    git log -n "${context_messages}" --pretty=format:"%B" |
-      grep::filter "^Signed-off-by:" |
-      sed '/^$/N;/^\n$/D'
-
-    # Verify that the pipe operation was successful
-    shell::is_pipe_good || fail "Could not retrieve or process commit messages."
-
-    echo '```'
-  fi
-
-  cat <<'EOF' || fail "Could not output the data."
-
-## Diff
-
-The following diff represents the changes to be included in the new commit:
-
-```
-EOF
-
-  # Append the diff of staged changes to the prompt
-  if shell::argument_exists short "$@"; then
-    # Use a minimal diff if 'short' argument is provided
-    git diff --diff-algorithm=minimal --no-color --cached ||
-      fail "Could not generate a minimal diff."
-
-    echo "A short prompt was generated." >&2
-  else
-    # Otherwise, use a more detailed histogram diff with function context
-    git diff --diff-algorithm=histogram --no-color --cached --function-context -U15 ||
-      fail "Could not generate a detailed diff."
-  fi
-
-  # Close the commit messages section
-  echo '```'
+  # Return true if the value is explicitly true.
+  [ "${value}" = true ]
 }
 
 # ## `config::load`
@@ -565,66 +413,6 @@ config::load() {
 }
 JSON
     )" || fail "Failed to initialize the default configuration."
-}
-
-# ## `config::is_enabled`
-#
-# Checks if a given configuration key is enabled.
-#
-# This function retrieves a boolean value for the specified configuration key from the JSON configuration.
-# If the key is not found, it returns the provided default value (default: "true").
-#
-# ### Usage
-#
-# config::is_enabled <key> [<default>]
-#
-# Arguments:
-#   <key>              The configuration key to check.
-#   <default>          Optional default value if the key is not present (default: "true").
-#
-# ### Examples
-#
-# config::is_enabled "feature_enabled" "false"
-#
-config::is_enabled() {
-  local key="$1"
-  local default="${2:-"true"}"
-  local value
-
-  # Retrieve the value from the configuration JSON. If not found, use the default value.
-  value="$(jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}")" ||
-    fail "Could not retrieve the '${key}' setting from the configuration."
-
-  # Return true if the value is explicitly true.
-  [ "${value}" = true ]
-}
-
-# ## `config::get`
-#
-# Retrieves a value from the configuration for the specified key.
-#
-# This function fetches the value associated with the specified key from the JSON configuration.
-# If the key is not found, it returns the provided default value instead.
-#
-# ### Usage
-#
-# config::get <key> [<default>]
-#
-# Arguments:
-#   <key>              The configuration key to retrieve.
-#   <default>          Optional default value if the key is not present.
-#
-# ### Examples
-#
-# config::get "database.host" "localhost"
-#
-config::get() {
-  local key="$1"
-  local default="${2:-"null"}"
-
-  # Retrieve the value from the configuration JSON, or fall back to the default if not found.
-  jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}" ||
-    fail "Could not retrieve the '${key}' setting from the configuration."
 }
 
 # ## `knitmit::display_help`
@@ -785,6 +573,218 @@ knitmit::main() {
     git commit --template <(echo "${response}") ||
       fail "Failed to create a commit with the provided template."
   fi
+}
+
+# ## `knitmit::make_prompt`
+#
+# Generates a structured prompt for a commit message based on Git changes.
+#
+# This function creates a detailed prompt by analyzing staged Git changes
+# (diff) and recent commit history. If the "short" keyword is provided as an
+# argument, it generates a more concise prompt using a minimal diff.
+#
+# ### Usage
+#
+# knitmit::make_prompt [<keyword>]
+#
+# Arguments:
+#   [<keyword>]  Optional keyword. If "short", generates a prompt with
+#                minimal diff context. Otherwise, a more detailed diff
+#                and recent commit history are included.
+#
+# ### Examples
+#
+# knitmit::make_prompt
+# knitmit::make_prompt short
+#
+knitmit::make_prompt() {
+  local context_messages=12
+
+  # If the "short" keyword is provided, reduce the number of context messages
+  if shell::argument_exists short "$@"; then
+    context_messages=4
+  fi
+
+  # Begin constructing the prompt with formatting instructions and guidelines
+  cat <<'EOF' || fail "Could not output the data."
+Based on the changes described in the diff below, write a commit message adhering to the following guidelines:
+
+## Summary:
+
+* The first line should be a concise summary of the commit.
+
+  * Limit: 50 characters maximum.
+  * Written in plain text - no markdown headers or special formatting.
+  * Must start with a capital letter.
+  * Ensure there is no trailing whitespace.
+
+
+## Commit body:
+
+* Follow the summary with a detailed explanation:
+
+  * Use Markdown, limiting formatting to lists prefixed with '*'.
+  * Use quotation marks (" ") and code formatting (` `) where appropriate.
+  * Keep list items compact with no blank lines in between.
+  * Begin each bullet point with a capital letter.
+  * Avoid headings, or additional styling.
+  * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
+  * Ensure there is no trailing whitespace.
+  * Limit each line to a maximum of 72 characters.
+
+## Writing principles:
+
+* Ensure clarity, conciseness, and fluency.
+* Use consistent, formal terminology.
+* Maintain a professional and direct tone.
+* Avoid redundancy, cliches, and unnecessary embellishments.
+* Avoid unnecessary elaboration.
+* Focus on clarity and substance, avoiding repetition or redundant explanations.
+* If further detail is required, make it specific and directly relevant.
+
+## Do not:
+
+* Use bold, italic, or other markdown styles.
+* Use overly terse, literal, or informal phrasing.
+
+## Output format:
+
+* Provide only the formatted commit message, without any additional remarks.
+EOF
+
+  if git rev-parse --verify HEAD >/dev/null 2>&1; then
+    cat <<'EOF' || fail "Could not output the data."
+
+## Context
+
+Below are the most recent commit messages for reference:
+
+```
+EOF
+
+    # Append the last ${context_messages} commit messages.
+    # Filter out "Signed-off-by" lines and remove excessive blank lines.
+    # Here, `sed` is used to collapse multiple consecutive blank lines into a single blank line.
+    git log -n "${context_messages}" --pretty=format:"%B" |
+      grep::filter "^Signed-off-by:" |
+      sed '/^$/N;/^\n$/D'
+
+    # Verify that the pipe operation was successful
+    shell::is_pipe_good || fail "Could not retrieve or process commit messages."
+
+    echo '```'
+  fi
+
+  cat <<'EOF' || fail "Could not output the data."
+
+## Diff
+
+The following diff represents the changes to be included in the new commit:
+
+```
+EOF
+
+  # Append the diff of staged changes to the prompt
+  if shell::argument_exists short "$@"; then
+    # Use a minimal diff if 'short' argument is provided
+    git diff --diff-algorithm=minimal --no-color --cached ||
+      fail "Could not generate a minimal diff."
+
+    echo "A short prompt was generated." >&2
+  else
+    # Otherwise, use a more detailed histogram diff with function context
+    git diff --diff-algorithm=histogram --no-color --cached --function-context -U15 ||
+      fail "Could not generate a detailed diff."
+  fi
+
+  # Close the commit messages section
+  echo '```'
+}
+
+# ## `knitmit::query_models`
+#
+# Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
+# If a model command is found and responds successfully, its response is returned and the function exits.
+#
+# ### Usage
+#
+# knitmit::query_models
+#
+knitmit::query_models() {
+  local model_list model_array model_item command_raw command_array response
+  local report_line deffered_report=()
+
+  # Extract the list of model preferences from the configuration JSON
+  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${config_json}")" ||
+    fail "Failed to extract model preferences from the configuration."
+
+  # Read the list of models into an array
+  readarray -t model_array <<<"${model_list}" ||
+    fail "Failed to read model preferences into an array."
+
+  # Iterate over each model preference
+  for model_item in "${model_array[@]}"; do
+    # Convert the JSON array to a shell-compatible string representation
+    command_raw="$(jq --exit-status --raw-output '. | @sh' <<<"${model_item}")" ||
+      fail "Failed to process model preference item into a shell-compatible string."
+
+    # Use eval to support newlines in arguments when expanding the array
+    eval "command_array=(${command_raw})" ||
+      fail "Failed to convert model preference item to a command array."
+
+    # Verify if the command exists before attempting to run it
+    if ! command -v "${command_array[0]}" >/dev/null; then
+      if config::is_enabled report_unavailable_commands false; then
+        echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
+      else
+        deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
+      fi
+      # Skip the rest of the loop and proceed with the next iteration
+      continue
+    fi
+
+    # Check if the '<command>::is_configured' function exists in the current environment
+    if declare -F "${command_array[0]}::is_configured" > /dev/null; then
+      # If the function exists, invoke it to check if the command is configured properly
+      if ! "${command_array[0]}::is_configured"; then
+        # If the command is not configured and reporting is enabled, display a message
+        if config::is_enabled report_unavailable_commands false; then
+          echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
+        else
+          deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
+        fi
+        # Skip the rest of the loop and proceed with the next iteration
+        continue
+      fi
+    fi
+    
+    # Log the outgoing request with model command details
+    if ! declare -F "${command_array[0]}" > /dev/null; then
+      echo "Invoking language model command: ${command_array[*]}..." >&2
+    fi
+
+    # Run the model command with the provided prompt and capture the response
+    if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
+      echo "Model command failed with a non-zero exit status: ${command_array[*]}" >&2
+      # Skip the rest of the loop and proceed with the next iteration
+      continue
+    fi
+
+    # Output the response and exit the loop
+    echo "${response}"
+    return
+  done
+
+  # Inform the user that additional issues were reported during the model querying process
+  echo "Additionally, during model querying, the following was reported:" >&2
+
+  # Loop through the deferred report array and display each line
+  for report_line in "${deffered_report[@]}"; do
+    echo "${report_line}" >&2
+  done
+
+  # If no model succeeded, return with failure status
+  return 1
 }
 
 # Call the main script
