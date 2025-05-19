@@ -7,7 +7,6 @@ The script is also intended to be used as a Git subcommand `git knitmit`.
 ## Features
 
 *   **LLM-Powered Commit Messages:** Leverages LLMs to suggest well-formatted and descriptive commit messages.
-
 *   **Contextual Prompts:** Generates prompts based on staged Git diffs and recent commit history.
 *   **Customizable Prompts:** Option to generate a "short" prompt with minimal diff context, useful for large changes or token limits.
 *   **Flexible LLM Configuration:**
@@ -109,17 +108,11 @@ If the configuration file is not found, `knitmit` will use the following default
 **Configuration Options:**
 
 *   `commit_with_template` (boolean, default: `true`): If `true`, after getting the LLM response, `knitmit` will run `git commit --template <(response)` to open your editor with the suggested message.
-
 *   `copy_prompt` (boolean, default: `false`): If `true`, the generated prompt will be copied to the clipboard *before* querying the LLM.
-
 *   `copy_response` (boolean, default: `false`): If `true`, the LLM's response will be copied to the clipboard.
-
 *   `interactive_prompt_limit` (integer, default: `139000`): Maximum length of the prompt considered suitable for interactive use (e.g., pasting into a web UI). A warning is shown if this limit is exceeded when `copy_prompt` is active or the `copy` command is used.
-
 *   `query_language_model` (boolean, default: `true`): If `false`, the script will not query any LLM. Useful if you only want to generate and copy the prompt.
-
 *   `report_unavailable_commands` (boolean, default: `false`): If `true`, `knitmit` will immediately report if a model command in `model_preferences` is not found or not configured. If `false`, these messages are deferred until after all models have been attempted.
-
 *   `model_preferences` (array of arrays): A list of commands to try for querying an LLM.
     *   `knitmit` will attempt to use these models in the order they are listed. The first successful response is used.
     *   Each item in the array represents a command and its arguments. The script will pipe the generated prompt to the `stdin` of this command and expect the commit message suggestion on `stdout`.
@@ -199,21 +192,16 @@ git knitmit help
 **Workflow:**
 
 1.  Checks if inside a Git repository and if there are staged changes.
-
 2.  Loads configuration from `knitmit.json` or uses defaults.
-
 3.  Generates a prompt based on staged `git diff` and recent `git log`.
     *   The prompt instructs the LLM to create a commit message with a ~50-character summary and a more detailed body (72-char line limit, bullet points).
-
 4.  If `copy_prompt` is enabled in config or `copy` command is used:
     *   Copies the prompt to the clipboard.
     *   If `copy` command is used, exits here.
-
 5.  If `query_language_model` is enabled in config:
     *   Iterates through `model_preferences` from the configuration.
     *   For each model, it checks if the command is available and (if an `<command>::is_configured` function exists) configured.
     *   Sends the prompt (via stdin) to the first available and configured model command.
-
 6.  If an LLM response is received (from stdout):
     *   If `copy_response` is enabled in config or `result` command is used:
         *   Copies the response to the clipboard.
@@ -226,14 +214,10 @@ git knitmit help
 The `make_prompt` function generates a detailed prompt for the LLM, including:
 
 *   **Strict formatting guidelines:**
-
     *   Summary: Max 50 chars, capitalized, no trailing whitespace, plain text.
     *   Body: Plain text list format (`*` prefix), max 72 chars per line, capitalized bullets, no markdown.
-
 *   **Writing principles:** Emphasizes clarity, conciseness, formal tone, and avoidance of redundancy.
-
 *   **Context:**
-
     *   Recent commit messages (last 12 by default, 4 if `short` is used) to provide context on project style and recent work.
     *   The full `git diff --cached` of staged changes.
         *   If `short` is used: `git diff --diff-algorithm=minimal --cached`.
@@ -242,17 +226,11 @@ The `make_prompt` function generates a detailed prompt for the LLM, including:
 ## Troubleshooting
 
 *   **"The GEMINI_API_KEY environment variable is not set."**: Make sure you have set this environment variable if you intend to use the `query::gemini` function.
-
 *   **"No changes have been staged for commit."**: Stage your changes using `git add <files>` before running `knitmit`.
-
 *   **"The current directory is not part of a Git repository."**: Navigate to a Git repository.
-
 *   **"jq: command not found" / "curl: command not found"**: Install `jq` and `curl` using your system's package manager.
-
 *   **"Could not access the clipboard using..."**: Ensure one of the supported clipboard utilities (`wl-copy`, `xclip`, `pbcopy`, `clip`) is installed and working.
-
 *   **Model command issues ("command not available", "not configured", "failed with a non-zero exit status")**:
-
     *   Verify that the LLM tools specified in your `model_preferences` (e.g., `aichat`, `llm`, `ollama run`) are installed correctly, configured, and are in your `PATH`.
     *   Ensure they accept prompts via `stdin` and output to `stdout`.
     *   Check their specific configuration requirements (e.g., model downloads for `ollama`, API keys for cloud-based tools wrapped by these CLIs).
