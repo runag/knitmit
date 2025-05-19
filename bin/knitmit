@@ -440,7 +440,7 @@ Based on the changes described in the diff below, write a commit message adherin
 * Follow the summary with a detailed explanation:
 
   * Use Markdown, limiting formatting to lists prefixed with '*'.
-  * Use " " and ` ` where appropriate.
+  * Use quotation marks (" ") and code formatting (` `) where appropriate.
   * Keep list items compact with no blank lines in between.
   * Begin each bullet point with a capital letter.
   * Avoid headings, or additional styling.
