@@ -64,20 +64,19 @@ knitmit --help
 * **Git:** Must be installed and the script must be run within a Git repository.
 * **jq:** For parsing JSON responses and configuration. (Install via `sudo apt install jq`, `brew install jq`, etc.)
 * **curl:** Used to make requests to the Gemini API when using the built-in `query::gemini`. It is usually pre-installed on most systems.
-* **LLM Access & Tools:**
+* **LLM access & tools:**
   * For **Gemini models (via `query::gemini`)**:
     * A Google Gemini API key.
     * The `GEMINI_API_KEY` environment variable must be set.
   * For **other local CLI LLM tools** listed in `model_preferences` (e.g., `aichat`, `llm`, `sgpt`, `ollama`):
     * These tools must be installed, configured, and accessible in your system's `PATH`.
     * They must accept the prompt input via `stdin` and output the generated text to `stdout`.
-* **Clipboard Tools (Optional but Recommended):**
+* **Clipboard tools (optional but recommended):**
   * On Linux (Wayland): `wl-copy`
   * On Linux (X11): `xclip`
   * On macOS: `pbcopy`
-  * On Windows (Git Bash/MSYS/Cygwin): `clip`
-
-  If no clipboard tool is found, the script will print the content to standard output.
+  * On Windows (Git Bash/MSYS/Cygwin): `clip`  
+  * If no clipboard tool is found, the script will print the content to standard output.
 
 ## Installation
 
@@ -163,7 +162,7 @@ If the configuration file is not found, `knitmit` will use the following default
         ]
         ```
 
-### Supported Model Types/Commands:
+### Supported model types/commands:
 
 * **`query::gemini`**: This is a special built-in function that sends API calls directly to Google's Gemini models using `curl`. It requires `GEMINI_API_KEY` to be set.
     * Example: `["query::gemini", "gemini-2.0-flash"]`
