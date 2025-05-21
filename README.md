@@ -1,37 +1,33 @@
 # Knitmit
 
-**`knitmit`** is a portable, self-contained, configurable, and hackable Bash script that streamlines your Git workflow by automatically generating commit messages using Large Language Models (LLMs). It analyzes your staged changes, builds a detailed prompt, queries your configured LLM, and uses the response to craft a commit message — ready to be reviewed or committed as-is.
-
-The script is also intended to be used as a Git subcommand `git knitmit`.
+**`knitmit`** is a portable, self-contained, and configurable Bash script that streamlines your Git workflow by generating commit messages using Large Language Models (LLMs). It analyzes your staged changes, constructs a detailed prompt, queries your chosen LLM, and returns a commit message — ready for review or immediate use.
 
 ## Features
 
-## Features
-
-* **LLM-powered commit messages:** Leverages LLMs to suggest well-formatted and descriptive commit messages.
-* **Contextual prompts:** Generates prompts based on staged Git diffs and recent commit history.
-* **Customizable prompts:** Option to generate a "short" prompt with minimal diff context, useful for large changes or token limits.
-* **Customizable commit instructions:** Allows overriding the default commit message formatting guidelines via a local configuration file.
+* **LLM-powered commit messages:** Uses large language models to suggest clear, well-formatted commit messages.
+* **Contextual prompting:** Builds prompts from staged Git diffs and recent commit history to provide relevant context.
+* **Prompt customization:** Offers a "short" prompt option with minimal diff context — ideal for large changes or when hitting token limits.
+* **Custom commit instructions:** Supports overriding default commit message guidelines via a local configuration file.
 * **Flexible LLM configuration:**
-  * Supports multiple LLM backends through a configuration file (`model_preferences`).
-  * Tries configured models in order until one succeeds.
-  * **Built-in support for Gemini models** via `query::gemini` (uses `curl` and `GEMINI_API_KEY`).
-  * **Support for local CLI LLM tools:** Easily integrate with command-line tools that accept a prompt via `stdin` and output the result to `stdout`.
-* **Configuration file:** Manage settings via `knitmit.json` in your platform's configuration directory.
+  * Supports multiple LLM backends defined in the `model_preferences` section of the config file.
+  * Attempts each configured model in order until one succeeds.
+  * **Built-in Gemini support:** Includes a `query::gemini` function that uses `curl` and the `GEMINI_API_KEY`.
+  * **Support for local CLI-based LLMs:** Easily integrates with command-line tools that read from `stdin` and write to `stdout`.
+* **Configuration file:** Centralizes settings in `knitmit.json` located in your platform's standard config directory.
 * **Clipboard integration:**
-  * Copy the generated prompt to the clipboard.
-  * Copy the LLM's response to the clipboard.
-* **Platform aware:** Automatically determines the correct configuration directory and uses platform-specific clipboard tools (`wl-copy`, `xclip`, `pbcopy`, `clip`).
-* **Git integration:**
-  * Can directly use the LLM's response as a template for `git commit`.
-  * Checks for staged changes and if inside a Git repository.
-* **Handling redirected output:** If the output is being piped or redirected (i.e., not connected to a terminal), the script prints the LLM response and exits — skipping both clipboard and commit actions.
-* **Robust error handling:** Provides clear error messages and stack traces for easier debugging.
-* **Informative output:** Keeps the user informed about the steps being taken (e.g., model being queried, clipboard actions).
+  * Copies the generated prompt to your clipboard.
+  * Copies the LLM’s response to your clipboard.
+* **Platform-aware behavior:** Detects the appropriate configuration directory and clipboard tool (`wl-copy`, `xclip`, `pbcopy`, `clip`) for the current OS.
+* **Git-aware integration:**
+  * Automatically uses the LLM’s output as a `git commit` message.
+  * Verifies that you're inside a Git repository with staged changes.
+* **Smart output handling:** When output is redirected or piped, it skips clipboard and commit actions — printing the LLM response and exiting.
+* **Robust error handling:** Displays clear error messages and full stack traces to aid in debugging.
+* **Informative logging:** Clearly communicates what the tool is doing — including model selection, clipboard actions, and more.
 
 ## Usage
 
-Run `knitmit` (or `git knitmit`) from within a Git repository with staged changes.
+Run `knitmit` (or `git knitmit`) inside a Git repository with staged changes — both forms behave the same:
 
 ```bash
 # Query the LLM for a commit message and open the commit editor with the suggestion
@@ -69,23 +65,23 @@ knitmit --help
 
 ## Requirements
 
-* **Bash:** This script is written in Bash and requires version 4.0 or later (released in 2009). If you're using macOS, be aware that it comes with Bash 3.2 and no longer provides updates. You can easily install the latest version via Homebrew: `brew install bash`.
-* **Git:** Must be installed and the script must be run within a Git repository.
-* **jq:** For parsing JSON responses and configuration. (Install via `sudo apt install jq`, `brew install jq`, etc.)
-* **curl:** Used to make requests to the Gemini API when using the built-in `query::gemini`. It is usually pre-installed on most systems.
-* **LLM access & tools:**
-  * For **Gemini models (via `query::gemini`)**:
+* **Bash:** This script is written in Bash and requires version 4.0 or later (released in 2009). macOS includes Bash 3.2 by default and no longer updates it, so you’ll need to install a newer version if you're on macOS — use Homebrew: `brew install bash`.
+* **Git:** Must be installed, and the script must be run within a Git repository.
+* **jq:** Required for parsing JSON responses and configuration files. Install it with your package manager, e.g., `sudo apt install jq` or `brew install jq`.
+* **curl:** Used to make requests to the Gemini API when using the built-in `query::gemini`. Typically pre-installed on most systems.
+* **LLM access and tools:**
+  * For **Gemini models** (`query::gemini`):
     * A Google Gemini API key.
     * The `GEMINI_API_KEY` environment variable must be set.
   * For **other local CLI LLM tools** listed in `model_preferences` (e.g., `aichat`, `llm`, `sgpt`, `ollama`):
-    * These tools must be installed, configured, and accessible in your system's `PATH`.
-    * They must accept the prompt input via `stdin` and output the generated text to `stdout`.
-* **Clipboard tools (optional but recommended):**
-  * On Linux (Wayland): `wl-copy`
-  * On Linux (X11): `xclip`
-  * On macOS: `pbcopy`
-  * On Windows (Git Bash/MSYS/Cygwin): `clip`  
-  * If no clipboard tool is found, the script will print the content to standard output.
+    * These tools must be installed and accessible via your system’s `PATH`.
+    * They should accept input via `stdin` and return output via `stdout`.
+* **Clipboard tools** (optional but recommended):
+  * **Linux (Wayland):** `wl-copy`
+  * **Linux (X11):** `xclip`
+  * **macOS:** `pbcopy`
+  * **Windows (Git Bash/MSYS/Cygwin):** `clip`
+  * If no clipboard tool is detected, the script will simply print the content to standard output.
 
 ## Installation
 
@@ -127,7 +123,7 @@ knitmit --help
 * **macOS:** `~/Library/Application Support/knitmit.json`
 * **Windows:** `%APPDATA%/knitmit.json`
 
-If the configuration file is not found, `knitmit` will use the following default configuration:
+If the file is not found, `knitmit` falls back to the following default configuration:
 
 ```json
 {
@@ -148,48 +144,48 @@ If the configuration file is not found, `knitmit` will use the following default
 }
 ```
 
-### Configuration Options:
+### Configuration options
 
-* `commit_with_template` (boolean, default: `true`): If `true`, after getting the LLM response, `knitmit` will run `git commit --template <(response)` to open your editor with the suggested message.
-* `copy_prompt` (boolean, default: `false`): If `true`, the generated prompt will be copied to the clipboard *before* querying the LLM.
-* `copy_response` (boolean, default: `false`): If `true`, the LLM's response will be copied to the clipboard.
-* `interactive_prompt_limit` (integer, default: `139000`): Maximum length of the prompt considered suitable for interactive use (e.g., pasting into a web UI). A warning is shown if this limit is exceeded when `copy_prompt` is active or the `copy` command is used.
-* `query_language_model` (boolean, default: `true`): If `false`, the script will not query any LLM. Useful if you only want to generate and copy the prompt.
-* `report_unavailable_commands` (boolean, default: `false`): If `true`, `knitmit` will immediately report if a model command in `model_preferences` is not found or not configured. If `false`, these messages are deferred until after all models have been attempted.
-* `model_preferences` (array of arrays): A list of commands to try for querying an LLM.
-    * `knitmit` will attempt to use these models in the order they are listed. The first successful response is used.
-    * Each item in the array represents a command and its arguments. The script will pipe the generated prompt to the `stdin` of this command and expect the commit message suggestion on `stdout`.
-    * **Format:** `["command", "arg1", "arg2", ...]`
-    * **Example:**
-        ```json
-        "model_preferences": [
-          ["query::gemini", "gemini-2.0-flash"],
-          ["ollama", "run", "mistral"],
-          ["aichat", "--model", "gpt-4o"],
-          ["llm", "-m", "claude-3-haiku"],
-          ["sgpt", "--model", "gpt-3.5-turbo"]
-        ]
-        ```
+* `commit_with_template` (boolean, default: `true`): If `true`, after receiving a response from the LLM, `knitmit` will run `git commit --template <(response)` to open your editor with the suggested message.
+* `copy_prompt` (boolean, default: `false`): If `true`, the generated prompt is copied to the clipboard *before* sending it to the LLM.
+* `copy_response` (boolean, default: `false`): If `true`, the LLM's response is copied to the clipboard.
+* `interactive_prompt_limit` (integer, default: `139000`): Maximum prompt length considered suitable for interactive use (e.g., pasting into a web UI). If exceeded while `copy_prompt` is active or the `copy` command is used, a warning is shown.
+* `query_language_model` (boolean, default: `true`): If `false`, no LLM will be queried. This is useful when you only want to generate and copy the prompt.
+* `report_unavailable_commands` (boolean, default: `false`): If `true`, `knitmit` will immediately report any missing or unconfigured model commands in `model_preferences`. If `false`, errors are deferred until all models have been tried and are only shown if none return a successful response.
+* `model_preferences` (array of arrays): A prioritized list of commands to query an LLM.
+  * Models are tried in order until one returns a successful response.
+  * Each item represents a command and its arguments. The generated prompt is sent to the command’s `stdin`, and the response is read from `stdout`.
+  * **Format:** `["command", "arg1", "arg2", ...]`
+  * **Example:**
+    ```json
+    "model_preferences": [
+      ["query::gemini", "gemini-2.0-flash"],
+      ["ollama", "run", "mistral"],
+      ["aichat", "--model", "gpt-4o"],
+      ["llm", "-m", "claude-3-haiku"],
+      ["sgpt", "--model", "gpt-3.5-turbo"]
+    ]
+    ```
 
-### Supported model types/commands:
+### Supported model types and commands
 
-* **`query::gemini`**: This is a special built-in function that sends API calls directly to Google's Gemini models using `curl`. It requires `GEMINI_API_KEY` to be set.
-    * Example: `["query::gemini", "gemini-2.0-flash"]`
-    * Available Gemini model names: [https://ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
-* **Local CLI tools (e.g., `aichat`, `llm`, `sgpt`, `ollama`):** Many command-line LLM tools can be used if they adhere to the `stdin` for prompt and `stdout` for response convention. You just need to specify the command and any necessary arguments to select the model.
-    * **`aichat`**: Command-line interface for language models.
-        * Example: `["aichat", "--model", "MODEL_NAME"]` or `["aichat"]` (for default).
-        * More details: [https://github.com/sigoden/aichat](https://github.com/sigoden/aichat)
-    * **`llm`**: Command-line interface for language models.
-        * Example: `["llm", "--model", "MODEL_NAME"]` or `["llm", "-m", "MODEL_NAME"]` or `["llm"]` (for default).
-        * More details: [https://github.com/simonw/llm](https://github.com/simonw/llm)
-    * **`sgpt` (ShellGPT)**: Command-line interface for language models.
-        * Example: `["sgpt", "--model", "MODEL_NAME"]` or `["sgpt"]` (for default).
-        * More details: [https://github.com/tbckr/sgpt](https://github.com/tbckr/sgpt)
-    * **`ollama`**: Command-line interface for running models locally with Ollama.
-        * Example: `["ollama", "run", "MODEL_NAME"]` (A model name must be specified).
-        * More details: [https://github.com/ollama/ollama](https://github.com/ollama/ollama)
-* For `query::gemini`, `knitmit` also checks for the `query::gemini::is_configured` function (which checks `GEMINI_API_KEY`). You can create similar `<command>::is_configured` bash functions in your environment if your custom tools require specific setup checks before being called. If this function exists and returns a non-zero status, `knitmit` will skip that model.
+* **`query::gemini`**: A built-in function that sends API calls directly to Google's Gemini models using `curl`. Requires `GEMINI_API_KEY` to be set.
+  * Example: `["query::gemini", "gemini-2.0-flash"]`
+  * Supported models: [https://ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
+* **Local CLI tools**: Various command-line LLM tools can be used, provided they accept prompts via `stdin` and return responses via `stdout`. You must specify the command and any necessary arguments to choose the model.
+  * **`aichat`**: A command-line interface for language models.
+    * Example: `["aichat", "--model", "MODEL_NAME"]` or simply `["aichat"]` (uses the default model).
+    * Docs: [https://github.com/sigoden/aichat](https://github.com/sigoden/aichat)
+  * **`llm`**: Another CLI for interacting with language models.
+    * Example: `["llm", "--model", "MODEL_NAME"]`, `["llm", "-m", "MODEL_NAME"]`, or `["llm"]` (uses the default model).
+    * Docs: [https://github.com/simonw/llm](https://github.com/simonw/llm)
+  * **`sgpt` (ShellGPT)**: A CLI wrapper around LLMs.
+    * Example: `["sgpt", "--model", "MODEL_NAME"]` or `["sgpt"]` (uses the default model).
+    * Docs: [https://github.com/tbckr/sgpt](https://github.com/tbckr/sgpt)
+  * **`ollama`**: A CLI for running models locally via Ollama.
+    * Example: `["ollama", "run", "MODEL_NAME"]` (a model name is required).
+    * Docs: [https://github.com/ollama/ollama](https://github.com/ollama/ollama)
+* **Configuration checks**: For `query::gemini`, `knitmit` checks for a `query::gemini::is_configured` function that verifies whether `GEMINI_API_KEY` is set. You can define similar `<command>::is_configured` bash functions for custom tools. If such a function exists and returns a non-zero status, `knitmit` will skip using that model.
 
 ### Commit message guidelines and prompt construction
 
@@ -233,16 +229,21 @@ This contextual information ensures the generated commit message is both descrip
 
 ## Troubleshooting
 
-* **"The GEMINI_API_KEY environment variable is not set."**: Make sure you have set this environment variable if you intend to use the `query::gemini` function.
-* **"No changes have been staged for commit."**: Stage your changes using `git add <files>` before running `knitmit`.
-* **"The current directory is not part of a Git repository."**: Navigate to a Git repository.
-* **"jq: command not found" / "curl: command not found"**: Install `jq` and `curl` using your system's package manager.
-* **"Could not access the clipboard using..."**: Ensure one of the supported clipboard utilities (`wl-copy`, `xclip`, `pbcopy`, `clip`) is installed and working.
-* **Model command issues ("command not available", "not configured", "failed with a non-zero exit status")**:
-    * Verify that the LLM tools specified in your `model_preferences` (e.g., `aichat`, `llm`, `ollama run`) are installed correctly, configured, and are in your `PATH`.
-    * Ensure they accept prompts via `stdin` and output to `stdout`.
-    * Check their specific configuration requirements (e.g., model downloads for `ollama`, API keys for cloud-based tools wrapped by these CLIs).
-    * You can enable `report_unavailable_commands: true` in your config for more immediate feedback.
+* **"The GEMINI_API_KEY environment variable is not set."**  
+  Set this environment variable if you intend to use the `query::gemini` function.
+* **"No changes have been staged for commit."**  
+  Stage your changes using `git add <files>` before running `knitmit`.
+* **"The current directory is not part of a Git repository."**  
+  Make sure you're inside a valid Git repository. Use `git init` to create one if needed.
+* **"jq: command not found" / "curl: command not found"**  
+  Install `jq` and `curl` using your system's package manager (e.g., `apt`, `brew`, or `pacman`).
+* **"Could not access the clipboard using..."**  
+  Ensure a supported clipboard utility is installed and functional — such as `wl-copy`, `xclip`, `pbcopy`, or `clip`.
+* **Model command issues ("command not available", "not configured", "failed with a non-zero exit status")**  
+  * Confirm the tools listed in your `model_preferences` (e.g., `aichat`, `llm`, `ollama run`) are correctly installed, configured, and available in your `PATH`.
+  * Make sure they accept input via `stdin` and return output via `stdout`.
+  * Review specific setup steps for each tool — such as downloading models for `ollama`, or setting API keys for cloud-based CLIs.
+  * Optionally, enable `report_unavailable_commands: true` in your configuration file to receive immediate feedback when tools are unavailable.
 
 ## License
 
