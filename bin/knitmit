@@ -415,6 +415,66 @@ JSON
     )" || fail "Failed to initialize the default configuration."
 }
 
+# ## `knitmit::commit_instructions`
+#
+# Print commit message formatting instructions for use with diffs.
+#
+# Outputs guidelines for writing clear, structured commit messages, including summary,
+# body formatting, and tone principles. This content is written directly to standard output.
+#
+# ### Usage
+#
+# knitmit::commit_instructions
+#
+knitmit::commit_instructions() {
+    cat <<'EOF' || fail "Failed to output the commit message instructions."
+Based on the changes described in the diff below, write a commit message adhering to the following guidelines:
+
+## Summary:
+
+* The first line should be a concise summary of the commit:
+
+  * Limit: 50 characters maximum.
+  * Written in plain text - no markdown headers or special formatting.
+  * Must start with a capital letter.
+  * Ensure there is no trailing whitespace.
+
+## Commit body:
+
+* Follow the summary with a detailed explanation - only if the summary alone does not clearly convey the purpose of the changes.
+* If the summary fully captures the purpose of the change, omit the body.
+* If included, the body should:
+
+  * Use Markdown, limiting formatting to lists prefixed with '*'.
+  * Use quotation marks (" ") and code formatting (` `) where appropriate.
+  * Keep list items compact, with no blank lines in between.
+  * Begin each bullet point with a capital letter.
+  * Avoid headings or additional styling.
+  * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
+  * Ensure there is no trailing whitespace.
+  * Limit each line to a maximum of 72 characters.
+
+## Writing principles:
+
+* Ensure clarity, conciseness, and fluency.
+* Use consistent, formal terminology.
+* Maintain a professional and direct tone.
+* Avoid redundancy, cliches, and unnecessary embellishments.
+* Avoid unnecessary elaboration or over-explaining.
+* Focus on clarity and substance; avoid repetition and vague language.
+* Include additional detail only when it is specific and directly relevant.
+
+## Do not:
+
+* Use bold, italic, or other markdown styles.
+* Use overly terse, literal, or informal phrasing.
+
+## Output format:
+
+* Provide only the formatted commit message, without any additional remarks.
+EOF
+}
+
 # ## `knitmit::display_help`
 #
 # Displays the help message for the script.
@@ -438,9 +498,10 @@ The suggested message is then used to prepare a Git commit.
 
 Commands:
 
-  short          Generates a more concise prompt. This involves using a minimal
-                 diff of staged changes, which can be helpful if the default
-                 prompt is too long for the language model's input limits.
+  commit-instructions
+                 Displays formatting guidelines and writing standards for
+                 crafting high-quality commit messages. This output may be
+                 used as a template for a custom configuration file.
 
   copy           Generates the prompt and copies it to the system clipboard,
                  then exits. This option bypasses querying the language model,
@@ -448,6 +509,11 @@ Commands:
 
   result         Queries the language model and copies the response to the
                  system clipboard without making a Git commit.
+
+  short          Generates a more concise prompt. This involves using a minimal
+                 diff of staged changes, which can be helpful if the default
+                 prompt is too long for the language model's input limits.
+
 
   help, -h, --help
                  Displays this help message and exits.
@@ -488,12 +554,18 @@ knitmit::main() {
   local prompt
   local response
 
-  # Display help information if the help flag is present
+  # Show help content if a help flag is provided
   if shell::argument_exists "help" "$@" ||
     shell::argument_exists "--help" "$@" ||
     shell::argument_exists "-h" "$@"
   then
-    knitmit::display_help
+    knitmit::display_help || softfail "Failed to display help information."
+    return
+  fi
+
+  # Show commit instructions if the corresponding flag is provided
+  if shell::argument_exists "commit-instructions" "$@"; then
+    knitmit::commit_instructions || softfail "Failed to display commit message instructions."
     return
   fi
 
@@ -598,61 +670,24 @@ knitmit::main() {
 # knitmit::make_prompt short
 #
 knitmit::make_prompt() {
-  local context_messages=12
+  local commit_instructions_path context_messages=12
 
   # If the "short" keyword is provided, reduce the number of context messages
   if shell::argument_exists short "$@"; then
     context_messages=4
   fi
 
-  # Begin constructing the prompt with formatting instructions and guidelines
-  cat <<'EOF' || fail "Could not output the data."
-Based on the changes described in the diff below, write a commit message adhering to the following guidelines:
+  # Retrieve the path to the commit instructions file
+  commit_instructions_path="$(platform::config_home)/knitmit-commit-instructions.txt" ||
+    fail "Failed to determine the configuration path."
 
-## Summary:
-
-* The first line should be a concise summary of the commit.
-
-  * Limit: 50 characters maximum.
-  * Written in plain text - no markdown headers or special formatting.
-  * Must start with a capital letter.
-  * Ensure there is no trailing whitespace.
-
-## Commit body:
-
-* Follow the summary with a detailed explanation - only if the summary alone does not clearly convey the purpose of the changes.
-* If the summary fully captures the purpose of the change, omit the body.
-* If included, the body should:
-
-  * Use Markdown, limiting formatting to lists prefixed with '*'.
-  * Use quotation marks (" ") and code formatting (` `) where appropriate.
-  * Keep list items compact, with no blank lines in between.
-  * Begin each bullet point with a capital letter.
-  * Avoid headings or additional styling.
-  * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
-  * Ensure there is no trailing whitespace.
-  * Limit each line to a maximum of 72 characters.
-
-## Writing principles:
-
-* Ensure clarity, conciseness, and fluency.
-* Use consistent, formal terminology.
-* Maintain a professional and direct tone.
-* Avoid redundancy, cliches, and unnecessary embellishments.
-* Avoid unnecessary elaboration or over-explaining.
-* Focus on clarity and substance; avoid repetition and vague language.
-* Include additional detail only when it is specific and directly relevant.
-
-## Do not:
-
-* Use bold, italic, or other markdown styles.
-* Use overly terse, literal, or informal phrasing.
-
-## Output format:
-
-* Provide only the formatted commit message, without any additional remarks.
-EOF
-
+  # Output commit instructions from file if present; fallback to built-in instructions
+  if [ -f "${commit_instructions_path}" ]; then
+    cat "${commit_instructions_path}" || fail "Failed to read the commit instructions file."
+  else
+    knitmit::commit_instructions || fail "Could not output the default commit message instructions."
+  fi
+  
   if git rev-parse --verify HEAD >/dev/null 2>&1; then
     cat <<'EOF' || fail "Could not output the data."
 

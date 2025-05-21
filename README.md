@@ -9,6 +9,7 @@ The script is also intended to be used as a Git subcommand `git knitmit`.
 * **LLM-Powered Commit Messages:** Leverages LLMs to suggest well-formatted and descriptive commit messages.
 * **Contextual Prompts:** Generates prompts based on staged Git diffs and recent commit history.
 * **Customizable Prompts:** Option to generate a "short" prompt with minimal diff context, useful for large changes or token limits.
+* **Customizable Commit Instructions:** Allows overriding the default commit message formatting guidelines via a local configuration file.
 * **Flexible LLM Configuration:**
     * Supports multiple LLM backends through a configuration file (`model_preferences`).
     * Tries configured models in order until one succeeds.
@@ -24,6 +25,38 @@ The script is also intended to be used as a Git subcommand `git knitmit`.
     * Checks for staged changes and if inside a Git repository.
 * **Robust Error Handling:** Provides clear error messages and stack traces for easier debugging.
 * **Informative Output:** Keeps the user informed about the steps being taken (e.g., model being queried, clipboard actions).
+
+## Usage
+
+Run `knitmit` (or `git knitmit`) from within a Git repository with staged changes.
+
+```bash
+# Basic usage: Generate message and open commit editor with the suggestion
+knitmit
+
+# Generate a shorter prompt (minimal diff), then generate message and open commit editor
+knitmit short
+
+# Generate the full prompt and copy it to the clipboard, then exit (no LLM query)
+knitmit copy
+
+# Generate a short prompt, copy it to clipboard, then exit
+knitmit short copy
+
+# Generate prompt, query LLM, copy the LLM response to clipboard, then exit (no commit)
+knitmit result
+
+# Generate short prompt, query LLM, copy response to clipboard, then exit
+knitmit short result
+
+# Display commit message formatting instructions (useful for creating custom config file)
+knitmit commit-instructions
+
+# Display help message
+knitmit help
+knitmit -h
+knitmit --help
+```
 
 ## Requirements
 
@@ -149,47 +182,45 @@ If the configuration file is not found, `knitmit` will use the following default
         * More details: [https://github.com/ollama/ollama](https://github.com/ollama/ollama)
 * For `query::gemini`, `knitmit` also checks for the `query::gemini::is_configured` function (which checks `GEMINI_API_KEY`). You can create similar `<command>::is_configured` bash functions in your environment if your custom tools require specific setup checks before being called. If this function exists and returns a non-zero status, `knitmit` will skip that model.
 
-## Usage
+### Commit message guidelines and prompt construction
 
-Run `knitmit` (or `git knitmit`) from within a Git repository with staged changes.
+`knitmit` generates high-quality Git commit messages by creating a structured prompt for your configured LLM. This prompt begins with a concise summary, followed by a detailed explanation formatted using Markdown (limited to bulleted lists prefixed with `*`).
+
+The instructions for commit formatting are drawn from one of two sources:
+
+* If a `knitmit-commit-instructions.txt` file exists in your [configuration directory](#configuration), its contents are used.
+* Otherwise, default built-in instructions are applied. You can view these using:
+
+  ```bash
+  knitmit commit-instructions
+  ```
+
+These instructions cover:
+
+* Summary formatting — character limits, style, and punctuation.
+* Body formatting — when to include a body, how to structure it, and Markdown usage.
+* Writing principles — clarity, tone, and relevance.
+* Output requirements — plain text only, no extra formatting.
+
+To customize these rules, redirect the output to a file and edit as needed:
 
 ```bash
-# Basic usage: Generate message and open commit editor with the suggestion
-knitmit
-
-# Generate a shorter prompt (minimal diff), then generate message and open commit editor
-knitmit short
-
-# Generate the full prompt and copy it to the clipboard, then exit (no LLM query)
-knitmit copy
-
-# Generate a short prompt, copy it to clipboard, then exit
-knitmit short copy
-
-# Generate prompt, query LLM, copy the LLM response to clipboard, then exit (no commit)
-knitmit result
-
-# Generate short prompt, query LLM, copy response to clipboard, then exit
-knitmit short result
-
-# Display help message
-knitmit help
-knitmit -h
-knitmit --help
+knitmit commit-instructions > ~/.config/knitmit-commit-instructions.txt
 ```
 
-## How the Prompt is Constructed
+> This example is for Linux. On macOS or Windows, use the appropriate configuration path listed [here](#configuration).
 
-The `knitmit::make_prompt` function generates a detailed prompt for the LLM, beginning with a concise summary line followed by a more in-depth explanation. The body of the prompt uses Markdown formatting, but restricts it to bulleted lists prefixed with `*`.
+This file will override the built-in instructions whenever prompts are generated.
 
-The prompt provides context on the project's current state and style:
+The full prompt constructed by `knitmit` also includes:
 
-* A summary of recent commit messages to establish project history and tone:
-  * By default, includes the last 12 commit messages.
-  * If `short` is specified, includes the last 4 commit messages.
-* The full output of `git diff --cached` to capture staged changes:
-  * If `short` is used: `git diff --diff-algorithm=minimal --cached`.
-  * Otherwise: `git diff --diff-algorithm=histogram --cached --function-context -U15`.
+* A summary of recent commit messages to convey project tone and history:
+  * Defaults to the last 12 messages, or 4 if using `short`.
+* The full staged diff, using:
+  * `git diff --diff-algorithm=histogram --cached --function-context -U15` (default)
+  * Or `git diff --diff-algorithm=minimal --cached` when `short` is specified
+
+This contextual information ensures the generated commit message is both descriptive and consistent with your project’s style.
 
 ## Troubleshooting
 
