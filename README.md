@@ -195,7 +195,6 @@ The instructions for commit formatting are drawn from one of two sources:
 
 * If a `knitmit-commit-instructions.txt` file exists in your [configuration directory](#configuration), its contents are used.
 * Otherwise, default built-in instructions are applied. You can view these using:
-
   ```bash
   knitmit commit-instructions
   ```
