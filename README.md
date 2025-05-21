@@ -1,6 +1,6 @@
 # Knitmit
 
-**`Knitmit`** is a portable, self-contained, configurable, and hackable Bash script that streamlines your Git workflow by automatically generating commit messages using Large Language Models (LLMs). It analyzes your staged changes, builds a detailed prompt, queries your configured LLM, and uses the response to craft a commit message — ready to be reviewed or committed as-is.
+**`knitmit`** is a portable, self-contained, configurable, and hackable Bash script that streamlines your Git workflow by automatically generating commit messages using Large Language Models (LLMs). It analyzes your staged changes, builds a detailed prompt, queries your configured LLM, and uses the response to craft a commit message — ready to be reviewed or committed as-is.
 
 The script is also intended to be used as a Git subcommand `git knitmit`.
 
