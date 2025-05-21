@@ -121,7 +121,7 @@ If the configuration file is not found, `knitmit` will use the following default
     * **Example:**
         ```json
         "model_preferences": [
-          ["query::gemini", "gemini-2.0-flash"], // Uses built-in Gemini function
+          ["query::gemini", "gemini-2.0-flash"],
           ["ollama", "run", "mistral"],
           ["aichat", "--model", "gpt-4o"],
           ["llm", "-m", "claude-3-haiku"],
