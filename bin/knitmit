@@ -618,16 +618,17 @@ Based on the changes described in the diff below, write a commit message adherin
   * Must start with a capital letter.
   * Ensure there is no trailing whitespace.
 
-
 ## Commit body:
 
-* Follow the summary with a detailed explanation:
+* Follow the summary with a detailed explanation - only if the summary alone does not clearly convey the purpose of the changes.
+* If the summary fully captures the purpose of the change, omit the body.
+* If included, the body should:
 
   * Use Markdown, limiting formatting to lists prefixed with '*'.
   * Use quotation marks (" ") and code formatting (` `) where appropriate.
-  * Keep list items compact with no blank lines in between.
+  * Keep list items compact, with no blank lines in between.
   * Begin each bullet point with a capital letter.
-  * Avoid headings, or additional styling.
+  * Avoid headings or additional styling.
   * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
   * Ensure there is no trailing whitespace.
   * Limit each line to a maximum of 72 characters.
@@ -638,9 +639,9 @@ Based on the changes described in the diff below, write a commit message adherin
 * Use consistent, formal terminology.
 * Maintain a professional and direct tone.
 * Avoid redundancy, cliches, and unnecessary embellishments.
-* Avoid unnecessary elaboration.
-* Focus on clarity and substance, avoiding repetition or redundant explanations.
-* If further detail is required, make it specific and directly relevant.
+* Avoid unnecessary elaboration or over-explaining.
+* Focus on clarity and substance; avoid repetition and vague language.
+* Include additional detail only when it is specific and directly relevant.
 
 ## Do not:
 
