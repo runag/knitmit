@@ -633,6 +633,12 @@ knitmit::main() {
     return
   fi
 
+  # If standard output is not a terminal, output the response and return
+  if [ ! -t 1 ]; then
+    echo "${response}"
+    return
+  fi
+
   # Copy the response to the clipboard if the setting is enabled
   if config::is_enabled copy_response false; then
     platform::copy_to_clipboard <<<"${response}" ||

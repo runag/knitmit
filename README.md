@@ -6,53 +6,62 @@ The script is also intended to be used as a Git subcommand `git knitmit`.
 
 ## Features
 
-* **LLM-Powered Commit Messages:** Leverages LLMs to suggest well-formatted and descriptive commit messages.
-* **Contextual Prompts:** Generates prompts based on staged Git diffs and recent commit history.
-* **Customizable Prompts:** Option to generate a "short" prompt with minimal diff context, useful for large changes or token limits.
-* **Customizable Commit Instructions:** Allows overriding the default commit message formatting guidelines via a local configuration file.
-* **Flexible LLM Configuration:**
-    * Supports multiple LLM backends through a configuration file (`model_preferences`).
-    * Tries configured models in order until one succeeds.
-    * **Built-in support for Gemini models** via `query::gemini` (uses `curl` and `GEMINI_API_KEY`).
-    * **Support for local CLI LLM tools:** Easily integrate with command-line tools that accept a prompt via `stdin` and output the result to `stdout`.
-* **Configuration File:** Manage settings via `knitmit.json` in your platform's configuration directory.
-* **Clipboard Integration:**
-    * Copy the generated prompt to the clipboard.
-    * Copy the LLM's response to the clipboard.
-* **Platform Aware:** Automatically determines the correct configuration directory and uses platform-specific clipboard tools (`wl-copy`, `xclip`, `pbcopy`, `clip`).
-* **Git Integration:**
-    * Can directly use the LLM's response as a template for `git commit`.
-    * Checks for staged changes and if inside a Git repository.
-* **Robust Error Handling:** Provides clear error messages and stack traces for easier debugging.
-* **Informative Output:** Keeps the user informed about the steps being taken (e.g., model being queried, clipboard actions).
+## Features
+
+* **LLM-powered commit messages:** Leverages LLMs to suggest well-formatted and descriptive commit messages.
+* **Contextual prompts:** Generates prompts based on staged Git diffs and recent commit history.
+* **Customizable prompts:** Option to generate a "short" prompt with minimal diff context, useful for large changes or token limits.
+* **Customizable commit instructions:** Allows overriding the default commit message formatting guidelines via a local configuration file.
+* **Flexible LLM configuration:**
+  * Supports multiple LLM backends through a configuration file (`model_preferences`).
+  * Tries configured models in order until one succeeds.
+  * **Built-in support for Gemini models** via `query::gemini` (uses `curl` and `GEMINI_API_KEY`).
+  * **Support for local CLI LLM tools:** Easily integrate with command-line tools that accept a prompt via `stdin` and output the result to `stdout`.
+* **Configuration file:** Manage settings via `knitmit.json` in your platform's configuration directory.
+* **Clipboard integration:**
+  * Copy the generated prompt to the clipboard.
+  * Copy the LLM's response to the clipboard.
+* **Platform aware:** Automatically determines the correct configuration directory and uses platform-specific clipboard tools (`wl-copy`, `xclip`, `pbcopy`, `clip`).
+* **Git integration:**
+  * Can directly use the LLM's response as a template for `git commit`.
+  * Checks for staged changes and if inside a Git repository.
+* **Handling redirected output:** If the output is being piped or redirected (i.e., not connected to a terminal), the script prints the LLM response and exits — skipping both clipboard and commit actions.
+* **Robust error handling:** Provides clear error messages and stack traces for easier debugging.
+* **Informative output:** Keeps the user informed about the steps being taken (e.g., model being queried, clipboard actions).
 
 ## Usage
 
 Run `knitmit` (or `git knitmit`) from within a Git repository with staged changes.
 
 ```bash
-# Basic usage: Generate message and open commit editor with the suggestion
+# Query the LLM for a commit message and open the commit editor with the suggestion
 knitmit
 
-# Generate a shorter prompt (minimal diff), then generate message and open commit editor
+# Use a shorter prompt (minimal diff) to query the LLM and open the commit editor with the suggestion
 knitmit short
 
-# Generate the full prompt and copy it to the clipboard, then exit (no LLM query)
+# Generate the full prompt, copy it to the clipboard, and exit (no LLM query)
 knitmit copy
 
-# Generate a short prompt, copy it to clipboard, then exit
+# Generate a short prompt, copy it to the clipboard, and exit (no LLM query)
 knitmit short copy
 
-# Generate prompt, query LLM, copy the LLM response to clipboard, then exit (no commit)
+# Query the LLM for a commit message, copy the response to the clipboard, and exit (no commit)
 knitmit result
 
-# Generate short prompt, query LLM, copy response to clipboard, then exit
+# Use a short prompt to query the LLM, copy the response to the clipboard, and exit (no commit)
 knitmit short result
 
-# Display commit message formatting instructions (useful for creating custom config file)
+# Query the LLM for a commit message, write the response to stdout, and exit (no commit)
+knitmit > message.txt
+
+# Use a short prompt to query the LLM, write the response to stdout, and exit (no commit)
+knitmit short > message.txt
+
+# Show commit message formatting instructions (useful for creating a custom config file)
 knitmit commit-instructions
 
-# Display help message
+# Display the help message
 knitmit help
 knitmit -h
 knitmit --help
@@ -167,7 +176,7 @@ If the configuration file is not found, `knitmit` will use the following default
 * **`query::gemini`**: This is a special built-in function that sends API calls directly to Google's Gemini models using `curl`. It requires `GEMINI_API_KEY` to be set.
     * Example: `["query::gemini", "gemini-2.0-flash"]`
     * Available Gemini model names: [https://ai.google.dev/gemini-api/docs/models](https://ai.google.dev/gemini-api/docs/models)
-* **Local CLI Tools (e.g., `aichat`, `llm`, `sgpt`, `ollama`):** Many command-line LLM tools can be used if they adhere to the `stdin` for prompt and `stdout` for response convention. You just need to specify the command and any necessary arguments to select the model.
+* **Local CLI tools (e.g., `aichat`, `llm`, `sgpt`, `ollama`):** Many command-line LLM tools can be used if they adhere to the `stdin` for prompt and `stdout` for response convention. You just need to specify the command and any necessary arguments to select the model.
     * **`aichat`**: Command-line interface for language models.
         * Example: `["aichat", "--model", "MODEL_NAME"]` or `["aichat"]` (for default).
         * More details: [https://github.com/sigoden/aichat](https://github.com/sigoden/aichat)
