@@ -129,7 +129,7 @@ If the configuration file is not found, `knitmit` will use the following default
   "query_language_model": true,
   "report_unavailable_commands": false,
   "model_preferences": [
-    ["query::gemini", "gemini-2.5-flash-preview-04-17"],
+    ["query::gemini", "gemini-2.5-flash-preview-05-20"],
     ["query::gemini", "gemini-2.0-flash"],
     ["query::gemini", "gemini-2.0-flash-lite"],
     ["aichat"],
