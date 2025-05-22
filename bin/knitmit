@@ -305,135 +305,6 @@ query::gemini() {
   fi
 }
 
-# ## `config::get`
-#
-# Retrieves a value from the configuration for the specified key.
-#
-# This function fetches the value associated with the specified key from the JSON configuration.
-#
-# ### Usage
-#
-# config::get <key>
-#
-# Arguments:
-#   <key>  The configuration key to retrieve.
-#
-# ### Examples
-#
-# config::get "some_value"
-#
-config::get() {
-  local key="$1"
-
-  # Retrieve the value from the configuration JSON
-  jq --raw-output ".${key}" <<<"${CONFIG_JSON}" ||
-    fail "Could not retrieve the '${key}' setting from the configuration."
-}
-
-# ## `config::is_enabled`
-#
-# Checks if a given configuration key is enabled.
-#
-# This function retrieves a boolean value for the specified configuration key from the JSON configuration.
-#
-# ### Usage
-#
-# config::is_enabled <key>
-#
-# Arguments:
-#   <key>  The configuration key to check.
-#
-# ### Examples
-#
-# config::is_enabled "feature_enabled"
-#
-config::is_enabled() {
-  local key="$1"
-  local value
-
-  # Retrieve the value from the configuration JSON. If not found, use the default value
-  value="$(jq --raw-output ".${key}" <<<"${CONFIG_JSON}")" ||
-    fail "Could not retrieve the '${key}' setting from the configuration."
-
-  # Return true if the value is explicitly true
-  [ "${value}" = true ]
-}
-
-# ## `config::load`
-#
-# Load configuration from a JSON file or fall back to default settings.
-#
-# This function attempts to locate and read the configuration file from the platform's config
-# directory. If the file is not present, it falls back to using the built-in default configuration.
-# When a file is present, it merges its contents with the default configuration, filtering out
-# commented lines for clean parsing.
-#
-# ### Usage
-#
-# config::load
-#
-config::load() {
-  local default_config config_path user_config
-
-  # Initialize default configuration content
-  default_config="$(config::default)" ||
-    fail "Failed to initialize the default configuration."
-
-  # Determine the expected path to the configuration file
-  config_path="$(platform::config_home)/knitmit.json" ||
-    fail "Failed to determine the configuration path."
-
-  # Check if the config file exists
-  if [ -f "${config_path}" ]; then
-    # Filter out lines that are commented and store clean user configuration
-    user_config="$(grep::filter -E '^\s*//' "${config_path}")" ||
-      fail "Failed to read the configuration file."
-
-    # Merge default configuration with user-defined overrides
-    jq --argjson default_config "${default_config}" \
-       --argjson user_config "${user_config}" \
-       '$default_config * $user_config' <<<'{}' ||
-      fail "Failed to merge default and user configuration."
-  else
-    # If config file is not found, output default configuration
-    echo "${default_config}"
-  fi
-}
-
-# ## `config::default`
-#
-# Print the default configuration in JSON format.
-#
-# Outputs a static JSON configuration that defines default values for user options such as
-# prompt behavior, model preferences, and command reporting. This function is used as a baseline
-# setup for the script's behavior and may be redirected or parsed elsewhere.
-#
-# ### Usage
-#
-# config::default
-#
-config::default() {
-  # Print the default configuration in JSON format
-  cat <<JSON || fail "Failed to print the default configuration."
-{
-  "commit_with_template": true,
-  "copy_prompt": false,
-  "copy_response": false,
-  "interactive_prompt_limit": 139000,
-  "query_language_model": true,
-  "report_unavailable_commands": false,
-  "model_preferences": [
-    ["query::gemini", "gemini-2.5-flash-preview-05-20"],
-    ["query::gemini", "gemini-2.0-flash"],
-    ["query::gemini", "gemini-2.0-flash-lite"],
-    ["aichat"],
-    ["llm"],
-    ["sgpt"]
-  ]
-}
-JSON
-}
-
 # ## `knitmit::commit_instructions`
 #
 # Print commit message formatting instructions for use with diffs.
@@ -483,7 +354,7 @@ If a Commit Body is included, it MUST adhere to the following:
     `  * Nested item`
 * Wrap all code elements, identifiers, and literal values in backticks (e.g., `variableName`, `function()`, `true`).
 * Use plain URLs only (e.g., `http://example.com`), not Markdown-style links (e.g., `[Example](http://example.com)`).
-* All lines MUST be wrapped to a maximum of 72 characters. No line is permitted to exceed this 72-character limit.
+* All lines within the Commit Body MUST NOT exceed 72 characters. Lines that would exceed this limit MUST be wrapped to fit.
 * Each line MUST NOT contain trailing whitespace.
 
 4. Language and General Formatting (applies to the entire commit message):
@@ -503,189 +374,6 @@ If a Commit Body is included, it MUST adhere to the following:
 * Return ONLY the formatted commit message.
 * DO NOT include any commentary, headings, or explanatory text before or after the commit message.
 EOF
-}
-
-# ## `knitmit::display_help`
-#
-# Displays the help message for the script.
-#
-# This function prints usage instructions, a description of the script,
-# and details about available commands. It determines the script's name
-# dynamically for use in the help text.
-#
-# ### Usage
-#
-# knitmit::display_help
-#
-knitmit::display_help() {
-  cat <<EOF || fail "Could not output the data."
-Usage: ${BASH_SOURCE[0]##*/} [COMMAND...]
-
-Generates a commit message suggestion based on staged Git changes by
-querying the Large Language Model (LLM).
-
-The suggested message is then used to prepare a Git commit.
-
-Commands:
-
-  commit-instructions
-                 Displays formatting guidelines and writing standards for
-                 crafting high-quality commit messages. This output may be
-                 used as a template for a custom configuration file.
-
-  copy           Generates the prompt and copies it to the system clipboard,
-                 then exits. This option bypasses querying the language model,
-                 allowing you to use the prompt elsewhere or review it manually.
-
-  result         Queries the language model and copies the response to the
-                 system clipboard without making a Git commit.
-
-  short          Generates a more concise prompt. This involves using a minimal
-                 diff of staged changes, which can be helpful if the default
-                 prompt is too long for the language model's input limits.
-
-
-  help, -h, --help
-                 Displays this help message and exits.
-
-  The commands can be specified in any order.
-
-Requirements:
-
-* Requires Git and must be run inside a Git repository.
-* The GEMINI_API_KEY environment variable must be set to query the Gemini.
-EOF
-}
-
-# ## `knitmit::main`
-#
-# Main script to handle configuration, prompt generation, and model querying.
-#
-# ### Usage
-#
-# knitmit::main [<arguments>...]
-#
-# Arguments:
-#   short    Attempt to use a shorter prompt if the generated one is too long
-#   copy     Skip querying the models and only copy the prompt to the clipboard
-#   result   Copy the language model response to the clipboard and skip further processing
-#
-# ### Examples
-#
-# knitmit::main copy
-# knitmit::main result
-# knitmit::main short
-# knitmit::main short copy
-# knitmit::main short result
-#
-knitmit::main() {
-  local CONFIG_JSON
-  local interactive_prompt_limit
-  local prompt
-  local response
-
-  # Show help content if a help flag is provided
-  if shell::argument_exists "help" "$@" ||
-    shell::argument_exists "--help" "$@" ||
-    shell::argument_exists "-h" "$@"
-  then
-    knitmit::display_help || softfail "Failed to display help information."
-    return
-  fi
-
-  # Show commit instructions if the corresponding flag is provided
-  if shell::argument_exists "commit-instructions" "$@"; then
-    knitmit::commit_instructions || softfail "Failed to display commit message instructions."
-    return
-  fi
-
-  # Verify that the current directory is within a Git repository
-  if ! git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; then
-    echo "The current directory is not part of a Git repository." >&2
-    return 1
-  fi
-
-  # Confirm that changes have been staged for commit
-  if git diff --cached --quiet; then
-    echo "No changes have been staged for commit." >&2
-    return
-  fi
-
-  # Load the configuration
-  CONFIG_JSON="$(config::load)" || fail "Failed to load the configuration."
-
-  # Generate the prompt using the staged changes and commit history.
-  # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection.
-  prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
-
-  # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
-  if config::is_enabled copy_prompt || shell::argument_exists copy "$@"; then
-    # Retrieve the interactive prompt limit from the configuration JSON
-    interactive_prompt_limit="$(config::get interactive_prompt_limit)" ||
-      fail "Could not retrieve the interactive prompt limit from the configuration."
-
-    # Check if the generated prompt exceeds the maximum length for interactive use
-    if (( "${#prompt}" > interactive_prompt_limit )); then
-      if shell::argument_exists short "$@"; then
-        echo "The prompt remains too long for interactive use, even with the 'short' argument." >&2
-      else
-        echo "The prompt exceeds the interactive use length limit. To shorten it, use the 'short' argument:" >&2
-        echo "  ${BASH_SOURCE[0]##*/} short" >&2
-      fi
-    fi
-  fi
-
-  # Copy the prompt to the clipboard if the 'copy' argument is provided, or if
-  # the 'copy_prompt' setting is enabled, there is no 'result' argument, and the output is a terminal.
-  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt && ! shell::argument_exists result "$@" && [ -t 1 ]; }; then
-    platform::copy_to_clipboard <<<"${prompt}" ||
-      softfail "Could not copy the prompt to the clipboard."
-  fi
-
-  # If the 'copy' argument is present, skip querying the language model and return
-  if shell::argument_exists copy "$@"; then
-    echo "The 'copy' argument was provided; skipping the query to the language model." >&2
-    return
-  fi
-
-  # Skip querying the language model if the configuration is disabled
-  if ! config::is_enabled query_language_model; then
-    echo "The 'query_language_model' setting is disabled; skipping the query to the language model." >&2
-    return
-  fi
-
-  # Query available language models with the generated prompt
-  response="$(knitmit::query_models "$@")" || fail "Could not query any of the available language models."
-
-  # If the 'result' argument is provided and the output is a terminal, copy the response to the clipboard and return
-  if shell::argument_exists result "$@" && [ -t 1 ]; then
-    platform::copy_to_clipboard <<<"${response}" ||
-      softfail "Could not copy the language model response to the clipboard."
-    return
-  fi
-
-  # If standard output is not a terminal, output the response and return
-  if ! [ -t 1 ]; then
-    echo "${response}"
-    return
-  fi
-
-  # Copy the response to the clipboard if the setting is enabled
-  if config::is_enabled copy_response; then
-    platform::copy_to_clipboard <<<"${response}" ||
-      softfail "Could not copy the language model response to the clipboard."
-  fi
-
-  # Create a Git commit using the model's response if the setting is enabled
-  if config::is_enabled commit_with_template; then
-    echo "Creating a Git commit with the response as the template..." >&2
-    git commit --template <(echo "${response}") ||
-      fail "Failed to create a commit with the provided template."
-  else
-    # Otherwise, just output the response without creating a Git commit
-    echo "${response}"
-    return
-  fi
 }
 
 # ## `knitmit::make_prompt`
@@ -858,6 +546,318 @@ knitmit::query_models() {
 
   # If no model succeeded, return with failure status
   return 1
+}
+
+# ## `config::get`
+#
+# Retrieves a value from the configuration for the specified key.
+#
+# This function fetches the value associated with the specified key from the JSON configuration.
+#
+# ### Usage
+#
+# config::get <key>
+#
+# Arguments:
+#   <key>  The configuration key to retrieve.
+#
+# ### Examples
+#
+# config::get "some_value"
+#
+config::get() {
+  local key="$1"
+
+  # Retrieve the value from the configuration JSON
+  jq --raw-output ".${key}" <<<"${CONFIG_JSON}" ||
+    fail "Could not retrieve the '${key}' setting from the configuration."
+}
+
+# ## `config::is_enabled`
+#
+# Checks if a given configuration key is enabled.
+#
+# This function retrieves a boolean value for the specified configuration key from the JSON configuration.
+#
+# ### Usage
+#
+# config::is_enabled <key>
+#
+# Arguments:
+#   <key>  The configuration key to check.
+#
+# ### Examples
+#
+# config::is_enabled "feature_enabled"
+#
+config::is_enabled() {
+  local key="$1"
+  local value
+
+  # Retrieve the value from the configuration JSON. If not found, use the default value
+  value="$(jq --raw-output ".${key}" <<<"${CONFIG_JSON}")" ||
+    fail "Could not retrieve the '${key}' setting from the configuration."
+
+  # Return true if the value is explicitly true
+  [ "${value}" = true ]
+}
+
+# ## `config::load`
+#
+# Load configuration from a JSON file or fall back to default settings.
+#
+# This function attempts to locate and read the configuration file from the platform's config
+# directory. If the file is not present, it falls back to using the built-in default configuration.
+# When a file is present, it merges its contents with the default configuration, filtering out
+# commented lines for clean parsing.
+#
+# ### Usage
+#
+# config::load
+#
+config::load() {
+  local default_config config_path user_config
+
+  # Initialize default configuration content
+  default_config="$(config::default)" ||
+    fail "Failed to initialize the default configuration."
+
+  # Determine the expected path to the configuration file
+  config_path="$(platform::config_home)/knitmit.json" ||
+    fail "Failed to determine the configuration path."
+
+  # Check if the config file exists
+  if [ -f "${config_path}" ]; then
+    # Filter out lines that are commented and store clean user configuration
+    user_config="$(grep::filter -E '^\s*//' "${config_path}")" ||
+      fail "Failed to read the configuration file."
+
+    # Merge default configuration with user-defined overrides
+    jq --argjson default_config "${default_config}" \
+       --argjson user_config "${user_config}" \
+       '$default_config * $user_config' <<<'{}' ||
+      fail "Failed to merge default and user configuration."
+  else
+    # If config file is not found, output default configuration
+    echo "${default_config}"
+  fi
+}
+
+# ## `config::default`
+#
+# Print the default configuration in JSON format.
+#
+# Outputs a static JSON configuration that defines default values for user options such as
+# prompt behavior, model preferences, and command reporting. This function is used as a baseline
+# setup for the script's behavior and may be redirected or parsed elsewhere.
+#
+# ### Usage
+#
+# config::default
+#
+config::default() {
+  # Print the default configuration in JSON format
+  cat <<JSON || fail "Failed to print the default configuration."
+{
+  "commit_with_template": true,
+  "copy_prompt": false,
+  "copy_response": false,
+  "interactive_prompt_limit": 139000,
+  "query_language_model": true,
+  "report_unavailable_commands": false,
+  "model_preferences": [
+    ["query::gemini", "gemini-2.5-flash-preview-05-20"],
+    ["query::gemini", "gemini-2.0-flash"],
+    ["query::gemini", "gemini-2.0-flash-lite"],
+    ["aichat"],
+    ["llm"],
+    ["sgpt"]
+  ]
+}
+JSON
+}
+
+# ## `knitmit::main`
+#
+# Main script to handle configuration, prompt generation, and model querying.
+#
+# ### Usage
+#
+# knitmit::main [<arguments>...]
+#
+# Arguments:
+#   short    Attempt to use a shorter prompt if the generated one is too long
+#   copy     Skip querying the models and only copy the prompt to the clipboard
+#   result   Copy the language model response to the clipboard and skip further processing
+#
+# ### Examples
+#
+# knitmit::main copy
+# knitmit::main result
+# knitmit::main short
+# knitmit::main short copy
+# knitmit::main short result
+#
+knitmit::main() {
+  local CONFIG_JSON
+  local interactive_prompt_limit
+  local prompt
+  local response
+
+  # Show help content if a help flag is provided
+  if shell::argument_exists "help" "$@" ||
+    shell::argument_exists "--help" "$@" ||
+    shell::argument_exists "-h" "$@"
+  then
+    knitmit::display_help || softfail "Failed to display help information."
+    return
+  fi
+
+  # Show commit instructions if the corresponding flag is provided
+  if shell::argument_exists "commit-instructions" "$@"; then
+    knitmit::commit_instructions || softfail "Failed to display commit message instructions."
+    return
+  fi
+
+  # Verify that the current directory is within a Git repository
+  if ! git rev-parse --is-inside-work-tree >/dev/null 2>/dev/null; then
+    echo "The current directory is not part of a Git repository." >&2
+    return 1
+  fi
+
+  # Confirm that changes have been staged for commit
+  if git diff --cached --quiet; then
+    echo "No changes have been staged for commit." >&2
+    return
+  fi
+
+  # Load the configuration
+  CONFIG_JSON="$(config::load)" || fail "Failed to load the configuration."
+
+  # Generate the prompt using the staged changes and commit history.
+  # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection.
+  prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
+
+  # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
+  if config::is_enabled copy_prompt || shell::argument_exists copy "$@"; then
+    # Retrieve the interactive prompt limit from the configuration JSON
+    interactive_prompt_limit="$(config::get interactive_prompt_limit)" ||
+      fail "Could not retrieve the interactive prompt limit from the configuration."
+
+    # Check if the generated prompt exceeds the maximum length for interactive use
+    if (( "${#prompt}" > interactive_prompt_limit )); then
+      if shell::argument_exists short "$@"; then
+        echo "The prompt remains too long for interactive use, even with the 'short' argument." >&2
+      else
+        echo "The prompt exceeds the interactive use length limit. To shorten it, use the 'short' argument:" >&2
+        echo "  ${BASH_SOURCE[0]##*/} short" >&2
+      fi
+    fi
+  fi
+
+  # Copy the prompt to the clipboard if the 'copy' argument is provided, or if
+  # the 'copy_prompt' setting is enabled, there is no 'result' argument, and the output is a terminal.
+  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt && ! shell::argument_exists result "$@" && [ -t 1 ]; }; then
+    platform::copy_to_clipboard <<<"${prompt}" ||
+      softfail "Could not copy the prompt to the clipboard."
+  fi
+
+  # If the 'copy' argument is present, skip querying the language model and return
+  if shell::argument_exists copy "$@"; then
+    echo "The 'copy' argument was provided; skipping the query to the language model." >&2
+    return
+  fi
+
+  # Skip querying the language model if the configuration is disabled
+  if ! config::is_enabled query_language_model; then
+    echo "The 'query_language_model' setting is disabled; skipping the query to the language model." >&2
+    return
+  fi
+
+  # Query available language models with the generated prompt
+  response="$(knitmit::query_models "$@")" || fail "Could not query any of the available language models."
+
+  # If the 'result' argument is provided and the output is a terminal, copy the response to the clipboard and return
+  if shell::argument_exists result "$@" && [ -t 1 ]; then
+    platform::copy_to_clipboard <<<"${response}" ||
+      softfail "Could not copy the language model response to the clipboard."
+    return
+  fi
+
+  # If standard output is not a terminal, output the response and return
+  if ! [ -t 1 ]; then
+    echo "${response}"
+    return
+  fi
+
+  # Copy the response to the clipboard if the setting is enabled
+  if config::is_enabled copy_response; then
+    platform::copy_to_clipboard <<<"${response}" ||
+      softfail "Could not copy the language model response to the clipboard."
+  fi
+
+  # Create a Git commit using the model's response if the setting is enabled
+  if config::is_enabled commit_with_template; then
+    echo "Creating a Git commit with the response as the template..." >&2
+    git commit --template <(echo "${response}") ||
+      fail "Failed to create a commit with the provided template."
+  else
+    # Otherwise, just output the response without creating a Git commit
+    echo "${response}"
+    return
+  fi
+}
+
+# ## `knitmit::display_help`
+#
+# Displays the help message for the script.
+#
+# This function prints usage instructions, a description of the script,
+# and details about available commands. It determines the script's name
+# dynamically for use in the help text.
+#
+# ### Usage
+#
+# knitmit::display_help
+#
+knitmit::display_help() {
+  cat <<EOF || fail "Could not output the data."
+Usage: ${BASH_SOURCE[0]##*/} [COMMAND...]
+
+Generates a commit message suggestion based on staged Git changes by
+querying the Large Language Model (LLM).
+
+The suggested message is then used to prepare a Git commit.
+
+Commands:
+
+  commit-instructions
+                 Displays formatting guidelines and writing standards for
+                 crafting high-quality commit messages. This output may be
+                 used as a template for a custom configuration file.
+
+  copy           Generates the prompt and copies it to the system clipboard,
+                 then exits. This option bypasses querying the language model,
+                 allowing you to use the prompt elsewhere or review it manually.
+
+  result         Queries the language model and copies the response to the
+                 system clipboard without making a Git commit.
+
+  short          Generates a more concise prompt. This involves using a minimal
+                 diff of staged changes, which can be helpful if the default
+                 prompt is too long for the language model's input limits.
+
+
+  help, -h, --help
+                 Displays this help message and exits.
+
+  The commands can be specified in any order.
+
+Requirements:
+
+* Requires Git and must be run inside a Git repository.
+* The GEMINI_API_KEY environment variable must be set to query the Gemini.
+EOF
 }
 
 # Call the main script
