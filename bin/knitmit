@@ -271,16 +271,16 @@ query::gemini() {
     return 1
   fi
 
-  # Prepare the input text as a JSON string using jq
-  # This handles special characters and ensures proper formatting
+  # Prepare the input text as a JSON string using jq.
+  # This handles special characters and ensures proper formatting.
   input_text_json=$(jq --exit-status --ascii-output --raw-input --slurp .) ||
     softfail "Failed to convert the input text to JSON format using 'jq'." || return 1
 
   # Notify the user about the model being queried
   echo "Sending request to the language model '${model_name}'..." >&2
 
-  # Send the request to the Gemini language model API using curl
-  # Capture the response for further processing and check the exit status of the curl command
+  # Send the request to the Gemini language model API using curl.
+  # Capture the response for further processing and check the exit status of the curl command.
   if response_body="$(curl "https://generativelanguage.googleapis.com/v1beta/models/${model_name}:generateContent?key=${GEMINI_API_KEY}" \
     --request POST \
     --header 'Content-Type: application/json' \
@@ -328,7 +328,7 @@ config::get() {
   local key="$1"
   local default="${2:-"null"}"
 
-  # Retrieve the value from the configuration JSON, or fall back to the default if not found.
+  # Retrieve the value from the configuration JSON, or fall back to the default if not found
   jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}" ||
     fail "Could not retrieve the '${key}' setting from the configuration."
 }
@@ -357,11 +357,11 @@ config::is_enabled() {
   local default="${2:-"true"}"
   local value
 
-  # Retrieve the value from the configuration JSON. If not found, use the default value.
+  # Retrieve the value from the configuration JSON. If not found, use the default value
   value="$(jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}")" ||
     fail "Could not retrieve the '${key}' setting from the configuration."
 
-  # Return true if the value is explicitly true.
+  # Return true if the value is explicitly true
   [ "${value}" = true ]
 }
 
@@ -584,8 +584,8 @@ knitmit::main() {
   # Load the configuration
   config::load || fail "Failed to load the configuration."
 
-  # Generate the prompt using the staged changes and commit history
-  # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection
+  # Generate the prompt using the staged changes and commit history.
+  # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection.
   prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
 
   # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
@@ -605,8 +605,9 @@ knitmit::main() {
     fi
   fi
 
-  # Copy the prompt to the clipboard if the 'copy_prompt' setting is enabled and no 'result' argument is provided
-  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt false && ! shell::argument_exists result "$@"; }; then
+  # Copy the prompt to the clipboard if the 'copy' argument is provided, or if
+  # the 'copy_prompt' setting is enabled, there is no 'result' argument, and the output is a terminal.
+  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt false && ! shell::argument_exists result "$@" && [ -t 1 ]; }; then
     platform::copy_to_clipboard <<<"${prompt}" ||
       softfail "Could not copy the prompt to the clipboard."
   fi
@@ -626,15 +627,15 @@ knitmit::main() {
   # Query available language models with the generated prompt
   response="$(knitmit::query_models "$@")" || fail "Could not query any of the available language models."
 
-  # If the 'result' argument is provided, copy the response to the clipboard and return
-  if shell::argument_exists result "$@"; then
+  # If the 'result' argument is provided and the output is a terminal, copy the response to the clipboard and return
+  if shell::argument_exists result "$@" && [ -t 1 ]; then
     platform::copy_to_clipboard <<<"${response}" ||
       softfail "Could not copy the language model response to the clipboard."
     return
   fi
 
   # If standard output is not a terminal, output the response and return
-  if [ ! -t 1 ]; then
+  if ! [ -t 1 ]; then
     echo "${response}"
     return
   fi
@@ -650,6 +651,10 @@ knitmit::main() {
     echo "Creating a Git commit with the response as the template..." >&2
     git commit --template <(echo "${response}") ||
       fail "Failed to create a commit with the provided template."
+  else
+    # Otherwise, just output the response without creating a Git commit
+    echo "${response}"
+    return
   fi
 }
 
@@ -817,13 +822,15 @@ knitmit::query_models() {
     return
   done
 
-  # Inform the user that additional issues were reported during the model querying process
-  echo "Additionally, during model querying, the following was reported:" >&2
+  if [ ${#deffered_report[@]} -gt 0 ]; then
+    # Inform the user that additional issues were reported during the model querying process
+    echo "During model querying, the following was reported:" >&2
 
-  # Loop through the deferred report array and display each line
-  for report_line in "${deffered_report[@]}"; do
-    echo "${report_line}" >&2
-  done
+    # Loop through the deferred report array and display each line
+    for report_line in "${deffered_report[@]}"; do
+      echo "${report_line}" >&2
+    done
+  fi
 
   # If no model succeeded, return with failure status
   return 1
