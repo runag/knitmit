@@ -305,6 +305,94 @@ query::gemini() {
   fi
 }
 
+# ## `knitmit::query_models`
+#
+# Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
+# If a model command is found and responds successfully, its response is returned and the function exits.
+#
+# ### Usage
+#
+# knitmit::query_models
+#
+knitmit::query_models() {
+  local model_list model_array model_item command_raw command_array response
+  local report_line deffered_report=()
+
+  # Extract the list of model preferences from the configuration JSON
+  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${CONFIG_JSON}")" ||
+    fail "Failed to extract model preferences from the configuration."
+
+  # Read the list of models into an array
+  readarray -t model_array <<<"${model_list}" ||
+    fail "Failed to read model preferences into an array."
+
+  # Iterate over each model preference
+  for model_item in "${model_array[@]}"; do
+    # Convert the JSON array to a shell-compatible string representation
+    command_raw="$(jq --exit-status --raw-output '. | @sh' <<<"${model_item}")" ||
+      fail "Failed to process model preference item into a shell-compatible string."
+
+    # Use eval to support newlines in arguments when expanding the array
+    eval "command_array=(${command_raw})" ||
+      fail "Failed to convert model preference item to a command array."
+
+    # Verify if the command exists before attempting to run it
+    if ! command -v "${command_array[0]}" >/dev/null; then
+      if config::is_enabled report_unavailable_commands; then
+        echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
+      else
+        deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
+      fi
+      # Skip the rest of the loop and proceed with the next iteration
+      continue
+    fi
+
+    # Check if the '<command>::is_configured' function exists in the current environment
+    if declare -F "${command_array[0]}::is_configured" > /dev/null; then
+      # If the function exists, invoke it to check if the command is configured properly
+      if ! "${command_array[0]}::is_configured"; then
+        # If the command is not configured and reporting is enabled, display a message
+        if config::is_enabled report_unavailable_commands; then
+          echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
+        else
+          deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
+        fi
+        # Skip the rest of the loop and proceed with the next iteration
+        continue
+      fi
+    fi
+    
+    # Log the outgoing request with model command details
+    if ! declare -F "${command_array[0]}" > /dev/null; then
+      echo "Invoking language model command: ${command_array[*]}..." >&2
+    fi
+
+    # Run the model command with the provided prompt and capture the response
+    if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
+      echo "Model command failed with a non-zero exit status: ${command_array[*]}" >&2
+      # Skip the rest of the loop and proceed with the next iteration
+      continue
+    fi
+
+    # Output the response and exit the loop
+    echo "${response}"
+    return
+  done
+
+  if [ ${#deffered_report[@]} -gt 0 ]; then
+    # Inform the user that additional issues were reported during the model querying process
+    echo "During model querying, the following was reported:" >&2
+
+    # Loop through the deferred report array and display each line
+    for report_line in "${deffered_report[@]}"; do
+      echo "${report_line}" >&2
+    done
+  fi
+
+  # If no model succeeded, return with failure status
+  return 1
+}
+
 # ## `knitmit::commit_instructions`
 #
 # Print commit message formatting instructions for use with diffs.
@@ -460,94 +548,6 @@ knitmit::make_prompt() {
 
   # Close the diff section
   echo "--- END DIFF ---"
-}
-
-# ## `knitmit::query_models`
-#
-# Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
-# If a model command is found and responds successfully, its response is returned and the function exits.
-#
-# ### Usage
-#
-# knitmit::query_models
-#
-knitmit::query_models() {
-  local model_list model_array model_item command_raw command_array response
-  local report_line deffered_report=()
-
-  # Extract the list of model preferences from the configuration JSON
-  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${CONFIG_JSON}")" ||
-    fail "Failed to extract model preferences from the configuration."
-
-  # Read the list of models into an array
-  readarray -t model_array <<<"${model_list}" ||
-    fail "Failed to read model preferences into an array."
-
-  # Iterate over each model preference
-  for model_item in "${model_array[@]}"; do
-    # Convert the JSON array to a shell-compatible string representation
-    command_raw="$(jq --exit-status --raw-output '. | @sh' <<<"${model_item}")" ||
-      fail "Failed to process model preference item into a shell-compatible string."
-
-    # Use eval to support newlines in arguments when expanding the array
-    eval "command_array=(${command_raw})" ||
-      fail "Failed to convert model preference item to a command array."
-
-    # Verify if the command exists before attempting to run it
-    if ! command -v "${command_array[0]}" >/dev/null; then
-      if config::is_enabled report_unavailable_commands; then
-        echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
-      else
-        deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
-      fi
-      # Skip the rest of the loop and proceed with the next iteration
-      continue
-    fi
-
-    # Check if the '<command>::is_configured' function exists in the current environment
-    if declare -F "${command_array[0]}::is_configured" > /dev/null; then
-      # If the function exists, invoke it to check if the command is configured properly
-      if ! "${command_array[0]}::is_configured"; then
-        # If the command is not configured and reporting is enabled, display a message
-        if config::is_enabled report_unavailable_commands; then
-          echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
-        else
-          deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
-        fi
-        # Skip the rest of the loop and proceed with the next iteration
-        continue
-      fi
-    fi
-    
-    # Log the outgoing request with model command details
-    if ! declare -F "${command_array[0]}" > /dev/null; then
-      echo "Invoking language model command: ${command_array[*]}..." >&2
-    fi
-
-    # Run the model command with the provided prompt and capture the response
-    if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
-      echo "Model command failed with a non-zero exit status: ${command_array[*]}" >&2
-      # Skip the rest of the loop and proceed with the next iteration
-      continue
-    fi
-
-    # Output the response and exit the loop
-    echo "${response}"
-    return
-  done
-
-  if [ ${#deffered_report[@]} -gt 0 ]; then
-    # Inform the user that additional issues were reported during the model querying process
-    echo "During model querying, the following was reported:" >&2
-
-    # Loop through the deferred report array and display each line
-    for report_line in "${deffered_report[@]}"; do
-      echo "${report_line}" >&2
-    done
-  fi
-
-  # If no model succeeded, return with failure status
-  return 1
 }
 
 # ## `config::get`
