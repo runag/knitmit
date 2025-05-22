@@ -310,26 +310,23 @@ query::gemini() {
 # Retrieves a value from the configuration for the specified key.
 #
 # This function fetches the value associated with the specified key from the JSON configuration.
-# If the key is not found, it returns the provided default value instead.
 #
 # ### Usage
 #
-# config::get <key> [<default>]
+# config::get <key>
 #
 # Arguments:
-#   <key>              The configuration key to retrieve.
-#   <default>          Optional default value if the key is not present.
+#   <key>  The configuration key to retrieve.
 #
 # ### Examples
 #
-# config::get "database.host" "localhost"
+# config::get "some_value"
 #
 config::get() {
   local key="$1"
-  local default="${2:-"null"}"
 
-  # Retrieve the value from the configuration JSON, or fall back to the default if not found
-  jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}" ||
+  # Retrieve the value from the configuration JSON
+  jq --raw-output ".${key}" <<<"${CONFIG_JSON}" ||
     fail "Could not retrieve the '${key}' setting from the configuration."
 }
 
@@ -338,27 +335,24 @@ config::get() {
 # Checks if a given configuration key is enabled.
 #
 # This function retrieves a boolean value for the specified configuration key from the JSON configuration.
-# If the key is not found, it returns the provided default value (default: "true").
 #
 # ### Usage
 #
-# config::is_enabled <key> [<default>]
+# config::is_enabled <key>
 #
 # Arguments:
-#   <key>              The configuration key to check.
-#   <default>          Optional default value if the key is not present (default: "true").
+#   <key>  The configuration key to check.
 #
 # ### Examples
 #
-# config::is_enabled "feature_enabled" "false"
+# config::is_enabled "feature_enabled"
 #
 config::is_enabled() {
   local key="$1"
-  local default="${2:-"true"}"
   local value
 
   # Retrieve the value from the configuration JSON. If not found, use the default value
-  value="$(jq --raw-output "if .${key} == null then ${default} else .${key} end" <<<"${config_json}")" ||
+  value="$(jq --raw-output ".${key}" <<<"${CONFIG_JSON}")" ||
     fail "Could not retrieve the '${key}' setting from the configuration."
 
   # Return true if the value is explicitly true
@@ -367,34 +361,60 @@ config::is_enabled() {
 
 # ## `config::load`
 #
-# Loads configuration from a JSON file or sets a default if the file is not found.
+# Load configuration from a JSON file or fall back to default settings.
 #
-# This function attempts to retrieve the path to the configuration file and read its
-# contents, ignoring commented lines. If the file is not found, it initializes a default
-# configuration instead.
+# This function attempts to locate and read the configuration file from the platform's config
+# directory. If the file is not present, it falls back to using the built-in default configuration.
+# When a file is present, it merges its contents with the default configuration, filtering out
+# commented lines for clean parsing.
 #
 # ### Usage
 #
 # config::load
 #
 config::load() {
-  local config_path
+  local default_config config_path user_config
 
-  # Retrieve the path to the configuration file
+  # Initialize default configuration content
+  default_config="$(config::default)" ||
+    fail "Failed to initialize the default configuration."
+
+  # Determine the expected path to the configuration file
   config_path="$(platform::config_home)/knitmit.json" ||
     fail "Failed to determine the configuration path."
 
-  # Check if the configuration file exists and read its contents
+  # Check if the config file exists
   if [ -f "${config_path}" ]; then
-    # Load the configuration, filtering out commented lines
-    config_json="$(grep::filter -E '^\s*//' "${config_path}")" ||
+    # Filter out lines that are commented and store clean user configuration
+    user_config="$(grep::filter -E '^\s*//' "${config_path}")" ||
       fail "Failed to read the configuration file."
 
-    return
+    # Merge default configuration with user-defined overrides
+    jq --argjson default_config "${default_config}" \
+       --argjson user_config "${user_config}" \
+       '$default_config * $user_config' <<<'{}' ||
+      fail "Failed to merge default and user configuration."
+  else
+    # If config file is not found, output default configuration
+    echo "${default_config}"
   fi
+}
 
-  # Set the default configuration if the file does not exist
-  config_json="$(cat <<JSON
+# ## `config::default`
+#
+# Print the default configuration in JSON format.
+#
+# Outputs a static JSON configuration that defines default values for user options such as
+# prompt behavior, model preferences, and command reporting. This function is used as a baseline
+# setup for the script's behavior and may be redirected or parsed elsewhere.
+#
+# ### Usage
+#
+# config::default
+#
+config::default() {
+  # Print the default configuration in JSON format
+  cat <<JSON || fail "Failed to print the default configuration."
 {
   "commit_with_template": true,
   "copy_prompt": false,
@@ -412,7 +432,6 @@ config::load() {
   ]
 }
 JSON
-    )" || fail "Failed to initialize the default configuration."
 }
 
 # ## `knitmit::commit_instructions`
@@ -428,52 +447,54 @@ JSON
 #
 knitmit::commit_instructions() {
     cat <<'EOF' || fail "Failed to output the commit message instructions."
-Based on the changes described in the diff below, write a commit message adhering to the following guidelines:
+You are an AI assistant tasked with generating a commit message.
+Generate a commit message based on the provided diff and recent commit history. Follow these rules precisely:
 
-## Summary:
+1. Commit Message Requirements:
 
-* The first line should be a concise summary of the commit:
+* The commit message MUST clearly state the purpose of the change derived from the provided diff.
+* It MUST consist of a **Summary line** followed by an optional **Commit body**.
+* The **Commit body** IS REQUIRED if the change is too complex to be fully explained in the Summary line.
 
-  * Limit: 50 characters maximum.
-  * Written in plain text - no markdown headers or special formatting.
-  * Must start with a capital letter.
-  * Ensure there is no trailing whitespace.
+2. Summary line (Mandatory):
 
-## Commit body:
+* MUST be a single sentence, a concise summary of the change.
+* MUST NOT exceed 50 characters in length.
+* MUST start with a capital letter.
+* MUST be plain text only (no Markdown formatting or styling).
+* MUST NOT contain trailing whitespace.
 
-* Follow the summary with a detailed explanation - only if the summary alone does not clearly convey the purpose of the changes.
-* If the summary fully captures the purpose of the change, omit the body.
-* If included, the body should:
-  * Use Markdown, limiting formatting to lists prefixed with '*'.
-  * Always include exactly one space between the '*' prefix and the start of the list item text.
-  * When generating Markdown content that includes bulleted lists, always format each list item with exactly one space between the * and the start of the text.
-  * For nested list items, each indent level should use exactly two spaces.
-  * Use quotation marks (") and code formatting (`) where appropriate.
-  * Keep list items compact, with no blank lines in between.
-  * Begin each bullet point with a capital letter.
-  * Avoid headings or additional styling.
-  * Do not format URLs as markdown hyperlinks; keep them as plain URL text.
-  * Ensure there is no trailing whitespace.
-  * Limit each line to a maximum of 72 characters.
+3. Commit body (Optional):
 
-## Writing principles:
+If a commit body is included, it MUST adhere to the following:
 
-* Ensure clarity, conciseness, and fluency.
-* Use consistent, formal terminology.
-* Maintain a professional and direct tone.
-* Avoid redundancy, cliches, and unnecessary embellishments.
-* Avoid unnecessary elaboration or over-explaining.
-* Focus on clarity and substance; avoid repetition and vague language.
-* Include additional detail only when it is specific and directly relevant.
+* Be formatted as a Markdown list.
+* Use `*` as the bullet character.
+* Have exactly one space between `*` and the list item text (e.g., `* List item`).
+* Use two-space indentation for each nesting level (e.g., `  * Nested item`).
+* Have NO blank lines between list items.
+* Each list item MUST start with a capital letter.
+* Wrap all code elements, identifiers, and literal values in backticks (e.g., `variableName`, `function()`, `true`).
+* Use plain URLs only (e.g., `http://example.com`), not Markdown-style links (e.g., `[Example](http://example.com)`).
+* All lines MUST be wrapped to a maximum of 72 characters.
+* MUST NOT contain trailing whitespace on any line.
 
-## Do not:
+4. Language and General Formatting (Applies to the entire commit message):
 
-* Use bold, italic, or other markdown styles.
-* Use overly terse, literal, or informal phrasing.
+* Use clear, concise, and consistent professional language.
+* Avoid vague terms, filler words, or redundancy.
+* Use ASCII for English text. Use Unicode ONLY for non-English text or quoted non-ASCII code.
+* DO NOT use bold, italic, or other Markdown styling (except for backticks and list markers as specified for the commit body).
 
-## Output format:
+5. Input Context:
 
-* Provide only the formatted commit message, without any additional remarks.
+* Utilize the **Recent Commit History** (provided below) as context to better understand the provided diff and maintain consistency.
+* The primary source for the commit message content is the **Diff**.
+
+6. Output Format:
+
+* Return ONLY the formatted commit message.
+* DO NOT include any commentary, headings, or explanatory text before or after the commit message.
 EOF
 }
 
@@ -551,7 +572,7 @@ EOF
 # knitmit::main short result
 #
 knitmit::main() {
-  local config_json
+  local CONFIG_JSON
   local interactive_prompt_limit
   local prompt
   local response
@@ -584,16 +605,16 @@ knitmit::main() {
   fi
 
   # Load the configuration
-  config::load || fail "Failed to load the configuration."
+  CONFIG_JSON="$(config::load)" || fail "Failed to load the configuration."
 
   # Generate the prompt using the staged changes and commit history.
   # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection.
   prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
 
   # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
-  if config::is_enabled copy_prompt false || shell::argument_exists copy "$@"; then
-    # Retrieve the interactive prompt limit from the configuration JSON or default to 139000
-    interactive_prompt_limit="$(config::get interactive_prompt_limit 139000)" ||
+  if config::is_enabled copy_prompt || shell::argument_exists copy "$@"; then
+    # Retrieve the interactive prompt limit from the configuration JSON
+    interactive_prompt_limit="$(config::get interactive_prompt_limit)" ||
       fail "Could not retrieve the interactive prompt limit from the configuration."
 
     # Check if the generated prompt exceeds the maximum length for interactive use
@@ -609,7 +630,7 @@ knitmit::main() {
 
   # Copy the prompt to the clipboard if the 'copy' argument is provided, or if
   # the 'copy_prompt' setting is enabled, there is no 'result' argument, and the output is a terminal.
-  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt false && ! shell::argument_exists result "$@" && [ -t 1 ]; }; then
+  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt && ! shell::argument_exists result "$@" && [ -t 1 ]; }; then
     platform::copy_to_clipboard <<<"${prompt}" ||
       softfail "Could not copy the prompt to the clipboard."
   fi
@@ -643,7 +664,7 @@ knitmit::main() {
   fi
 
   # Copy the response to the clipboard if the setting is enabled
-  if config::is_enabled copy_response false; then
+  if config::is_enabled copy_response; then
     platform::copy_to_clipboard <<<"${response}" ||
       softfail "Could not copy the language model response to the clipboard."
   fi
@@ -701,15 +722,12 @@ knitmit::make_prompt() {
     knitmit::commit_instructions || fail "Could not output the default commit message instructions."
   fi
   
+  # Check if the current directory is a Git repository with at least one commit
   if git rev-parse --verify HEAD >/dev/null 2>&1; then
-    cat <<'EOF' || fail "Could not output the data."
-
-## Context
-
-Below are the most recent commit messages for reference:
-
-```
-EOF
+    echo ""
+    echo "Recent Commit History:"
+    echo ""
+    echo "--- BEGIN RECENT COMMIT HISTORY ---"
 
     # Append the last ${context_messages} commit messages.
     # Filter out "Signed-off-by" lines and remove excessive blank lines.
@@ -721,17 +739,14 @@ EOF
     # Verify that the pipe operation was successful
     shell::is_pipe_good || fail "Could not retrieve or process commit messages."
 
-    echo '```'
+    # Close the commit history section
+    echo "--- END RECENT COMMIT HISTORY ---"
   fi
 
-  cat <<'EOF' || fail "Could not output the data."
-
-## Diff
-
-The following diff represents the changes to be included in the new commit:
-
-```
-EOF
+  echo ""
+  echo "Diff:"
+  echo ""
+  echo "--- BEGIN DIFF ---"
 
   # Append the diff of staged changes to the prompt
   if shell::argument_exists short "$@"; then
@@ -746,8 +761,8 @@ EOF
       fail "Could not generate a detailed diff."
   fi
 
-  # Close the commit messages section
-  echo '```'
+  # Close the diff section
+  echo "--- END DIFF ---"
 }
 
 # ## `knitmit::query_models`
@@ -764,7 +779,7 @@ knitmit::query_models() {
   local report_line deffered_report=()
 
   # Extract the list of model preferences from the configuration JSON
-  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${config_json}")" ||
+  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${CONFIG_JSON}")" ||
     fail "Failed to extract model preferences from the configuration."
 
   # Read the list of models into an array
@@ -783,7 +798,7 @@ knitmit::query_models() {
 
     # Verify if the command exists before attempting to run it
     if ! command -v "${command_array[0]}" >/dev/null; then
-      if config::is_enabled report_unavailable_commands false; then
+      if config::is_enabled report_unavailable_commands; then
         echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
       else
         deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
@@ -797,7 +812,7 @@ knitmit::query_models() {
       # If the function exists, invoke it to check if the command is configured properly
       if ! "${command_array[0]}::is_configured"; then
         # If the command is not configured and reporting is enabled, display a message
-        if config::is_enabled report_unavailable_commands false; then
+        if config::is_enabled report_unavailable_commands; then
           echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
         else
           deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")

@@ -144,6 +144,10 @@ If the file is not found, `knitmit` falls back to the following default configur
 }
 ```
 
+The configuration file is in JSON format, but it may include lines commented out with a leading `//`. This allows you to temporarily disable specific models without removing them entirely.
+
+You don't need to provide the entire configuration — any values you include will override the corresponding defaults. If you include a `model_preferences` array, it will completely replace the default array.
+
 ### Configuration options
 
 * `commit_with_template` (boolean, default: `true`): If `true`, after receiving a response from the LLM, `knitmit` will run `git commit --template <(response)` to open your editor with the suggested message.
