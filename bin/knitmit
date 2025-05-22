@@ -447,16 +447,18 @@ JSON
 #
 knitmit::commit_instructions() {
     cat <<'EOF' || fail "Failed to output the commit message instructions."
-You are an AI assistant tasked with generating a commit message.
-Generate a commit message based on the provided diff and recent commit history. Follow these rules precisely:
+You are an AI assistant tasked with generating a Commit Message.
+
+Generate a Commit Message based on the provided Diff and Recent Commit History. Follow these rules precisely:
 
 1. Commit Message Requirements:
 
-* The commit message MUST clearly state the purpose of the change derived from the provided diff.
-* It MUST consist of a **Summary line** followed by an optional **Commit body**.
-* The **Commit body** IS REQUIRED if the change is too complex to be fully explained in the Summary line.
+* The Commit Message MUST clearly state the purpose of the change derived from the provided Diff.
+* It MUST consist of a Summary Line followed by an optional Commit Body.
+* If a Commit Body is present, it MUST be separated from the Summary Line by exactly one blank line.
+* The Commit Body IS REQUIRED if the change is too complex to be fully explained in the Summary Line.
 
-2. Summary line (Mandatory):
+2. Summary Line:
 
 * MUST be a single sentence, a concise summary of the change.
 * MUST NOT exceed 50 characters in length.
@@ -464,22 +466,27 @@ Generate a commit message based on the provided diff and recent commit history. 
 * MUST be plain text only (no Markdown formatting or styling).
 * MUST NOT contain trailing whitespace.
 
-3. Commit body (Optional):
+3. Commit Body:
 
-If a commit body is included, it MUST adhere to the following:
+If a Commit Body is included, it MUST adhere to the following:
 
 * Be formatted as a Markdown list.
-* Use `*` as the bullet character.
-* Have exactly one space between `*` and the list item text (e.g., `* List item`).
-* Use two-space indentation for each nesting level (e.g., `  * Nested item`).
 * Have NO blank lines between list items.
 * Each list item MUST start with a capital letter.
+* Each list item MUST use `*` as the bullet character.
+* Each list item MUST have exactly one space between the `*` and the list item text (e.g., `* List item`).
+* Indentation for nesting:
+  * Top-level list items (the start of the Commit Body) MUST have zero leading spaces (no indentation before the `*`).
+  * Each subsequent nesting level MUST be indented by exactly two additional spaces before the `*` character.
+  * Example showing top-level and one level of nesting:
+    `* Top-level item`
+    `  * Nested item`
 * Wrap all code elements, identifiers, and literal values in backticks (e.g., `variableName`, `function()`, `true`).
 * Use plain URLs only (e.g., `http://example.com`), not Markdown-style links (e.g., `[Example](http://example.com)`).
-* All lines MUST be wrapped to a maximum of 72 characters.
-* MUST NOT contain trailing whitespace on any line.
+* All lines MUST be wrapped to a maximum of 72 characters. No line is permitted to exceed this 72-character limit.
+* Each line MUST NOT contain trailing whitespace.
 
-4. Language and General Formatting (Applies to the entire commit message):
+4. Language and General Formatting (applies to the entire commit message):
 
 * Use clear, concise, and consistent professional language.
 * Avoid vague terms, filler words, or redundancy.
@@ -488,8 +495,8 @@ If a commit body is included, it MUST adhere to the following:
 
 5. Input Context:
 
-* Utilize the **Recent Commit History** (provided below) as context to better understand the provided diff and maintain consistency.
-* The primary source for the commit message content is the **Diff**.
+* Utilize the provided Recent Commit History as context to better understand the provided Diff and maintain consistency.
+* The primary source for the commit message content is the Diff.
 
 6. Output Format:
 
