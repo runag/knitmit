@@ -354,8 +354,10 @@ If a Commit Body is included, it MUST adhere to the following:
     `  * Nested item`
 * Wrap all code elements, identifiers, and literal values in backticks (e.g., `variableName`, `function()`, `true`).
 * Use plain URLs only (e.g., `http://example.com`), not Markdown-style links (e.g., `[Example](http://example.com)`).
-* All lines within the Commit Body MUST NOT exceed 72 characters. Lines that would exceed this limit MUST be wrapped to fit.
 * Each line MUST NOT contain trailing whitespace.
+* The Commit Body SHOULD be wrapped at or below 72 characters per line.
+  * Wrap only at natural word boundaries.
+  * Do not break URLs or code elements; if they are too long, preserve their integrity even if it exceeds the line length limit.
 
 4. Language and General Formatting (applies to the entire commit message):
 
