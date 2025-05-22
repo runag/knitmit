@@ -444,9 +444,11 @@ Based on the changes described in the diff below, write a commit message adherin
 * Follow the summary with a detailed explanation - only if the summary alone does not clearly convey the purpose of the changes.
 * If the summary fully captures the purpose of the change, omit the body.
 * If included, the body should:
-
   * Use Markdown, limiting formatting to lists prefixed with '*'.
-  * Use quotation marks (" ") and code formatting (` `) where appropriate.
+  * Always include exactly one space between the '*' prefix and the start of the list item text.
+  * When generating Markdown content that includes bulleted lists, always format each list item with exactly one space between the * and the start of the text.
+  * For nested list items, each indent level should use exactly two spaces.
+  * Use quotation marks (") and code formatting (`) where appropriate.
   * Keep list items compact, with no blank lines in between.
   * Begin each bullet point with a capital letter.
   * Avoid headings or additional styling.
