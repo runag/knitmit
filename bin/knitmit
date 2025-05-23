@@ -406,64 +406,77 @@ knitmit::query_models() {
 #
 knitmit::commit_instructions() {
     cat <<'EOF' || fail "Failed to output the commit message instructions."
-You are an AI assistant tasked with generating a Commit Message.
+You are an AI assistant tasked with generating a commit message.
 
-Generate a Commit Message based on the provided Diff and Recent Commit History. Follow these rules precisely:
+Generate a commit message based on the provided diff and recent commit history. Follow these rules precisely:
 
-1. Commit Message Requirements:
+1. Commit message requirements:
 
-* The Commit Message MUST clearly state the purpose of the change derived from the provided Diff.
-* It MUST consist of a Summary Line followed by an optional Commit Body.
-* If a Commit Body is present, it MUST be separated from the Summary Line by exactly one blank line.
-* The Commit Body IS REQUIRED if the change is too complex to be fully explained in the Summary Line.
+* The commit message must clearly communicate the purpose of the change — both the "what" and "why" — as determined from the provided diff.
+* It must consist of a summary line, followed by an optional commit body.
+* A commit body is required if the change is too complex to be fully explained in the summary line (e.g., if the "why", implications, or multiple distinct sub-changes cannot be captured concisely in a 50-character summary).
+* If a commit body is present, it must be separated from the summary line by exactly one blank line.
 
-2. Summary Line:
+2. Summary line requirements:
 
-* MUST be a single sentence, a concise summary of the change.
-* MUST NOT exceed 50 characters in length.
-* MUST start with a capital letter.
-* MUST be plain text only (no Markdown formatting or styling).
-* MUST NOT contain trailing whitespace.
+* Must be a single, concise summary of the change - typically an imperative phrase (e.g., "Fix bug in module") or a single sentence.
+* Do not include a period at the end unless the summary has multiple sentences.
+* Start with a capital letter, unless beginning with a lowercase code fragment such as a variable name, function name, literal value, or filename (e.g., `variableName`, `myFunction()`, `true`, `config.json`).
+* Must be plain text - no Markdown formatting, list markers, or styling.
+* Must not exceed 50 characters.
+* No trailing whitespace.
 
-3. Commit Body:
+3. Commit body:
 
-If a Commit Body is included, it MUST adhere to the following:
+If a commit body is included, it must follow these rules:
 
-* Be formatted as a Markdown list.
-* Have NO blank lines between list items.
-* Each list item MUST start with a capital letter.
-* Each list item MUST use `*` as the bullet character.
-* Each list item MUST have exactly one space between the `*` and the list item text (e.g., `* List item`).
-* Indentation for nesting:
-  * Top-level list items (the start of the Commit Body) MUST have zero leading spaces (no indentation before the `*`).
-  * Each subsequent nesting level MUST be indented by exactly two additional spaces before the `*` character.
-  * Example showing top-level and one level of nesting:
-    `* Top-level item`
-    `  * Nested item`
-* Wrap all code elements, identifiers, and literal values in backticks (e.g., `variableName`, `function()`, `true`).
-* Use plain URLs only (e.g., `http://example.com`), not Markdown-style links (e.g., `[Example](http://example.com)`).
-* Each line MUST NOT contain trailing whitespace.
-* The Commit Body SHOULD be wrapped at or below 72 characters per line.
-  * Wrap only at natural word boundaries.
-  * Do not break URLs or code elements; if they are too long, preserve their integrity even if it exceeds the line length limit.
+* Format the commit body as a Markdown document. It can contain multiple paragraphs, lists, and nested lists, but do not use styling such as bold, italic, strikethrough, headings, or horizontal rules.
+* Wrap all code fragments — such as variable names, function names, literal values, or filenames (e.g., `variableName`, `myFunction()`, `true`, `config.json`) — in backticks.
+* Write URLs as plain text only, without any Markdown formatting (e.g., use `http://example.com`, not `[Example](http://example.com)` or `![image](http://example.com/image.png)`).
+* Follow these formatting rules for lists:
+  * Use `*` as the list marker character.
+  * Do not include blank lines between list items.
+  * Place exactly one space between the list marker and the item content (e.g., `* List item content`).
+  * Use this indentation scheme for nested lists:
+    * Top-level list items have no indentation.
+    * Each nesting level adds exactly two spaces before the list marker.
+    * Example:
+      ```
+      * Top-level item
+        * Nested item
+      ```
+* Wrap each line so it does not exceed 72 characters — including spaces, list markers, indentation, and formatting symbols:
+  * Wrap at natural word boundaries.
+  * Do not break uninterrupted strings such as URLs or identifiers.
+  * If a long sequence cannot be wrapped without breaking a word or format, let it exceed the limit and place it on its own line.
 
-4. Language and General Formatting (applies to the entire commit message):
+4. Language and general formatting (applies to the entire commit message):
 
 * Use clear, concise, and consistent professional language.
-* Avoid vague terms, filler words, or redundancy.
-* Use ASCII for English text. Use Unicode ONLY for non-English text or quoted non-ASCII code.
-* DO NOT use bold, italic, or other Markdown styling (except for backticks and list markers as specified for the commit body).
+* Avoid vague terms, filler words, and redundancy.
+* Prefer ASCII characters for English text. Avoid stylistic Unicode characters (e.g., curly quotes, en dashes, ellipses) when ASCII equivalents (e.g., straight quotes, hyphen-minus, three periods) are sufficient.
 
-5. Input Context:
+5. Input context rules
 
-* Utilize the provided Recent Commit History as context to better understand the provided Diff and maintain consistency.
-* The primary source for the commit message content is the Diff.
+* The diff is the authoritative source for *what* technical changes were made and their direct implications.
+* Review the recent commit history to help articulate the *why* - the purpose and motivation behind the change - such as whether it is part of an ongoing feature, a fix for a previously introduced bug, or a step in a larger refactoring effort.
+* Refer to recent commits for inspiration - to maintain consistency in terminology, phrasing style, and appropriate level of detail - but do not mimic them exactly.
 
-6. Output Format:
+6. Output format rules
 
-* Return ONLY the formatted commit message.
-* DO NOT include any commentary, headings, or explanatory text before or after the commit message.
+* Return only the formatted commit message.
+* Do not include any commentary, headings, or explanatory text before or after the commit message.
 EOF
+
+# Recent commit history:
+
+# --- BEGIN RECENT COMMIT HISTORY ---
+# --- END RECENT COMMIT HISTORY ---
+
+# Diff:
+
+# --- BEGIN DIFF ---
+# --- END DIFF ---
 }
 
 # ## `knitmit::make_prompt`
