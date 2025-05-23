@@ -408,31 +408,45 @@ knitmit::commit_instructions() {
     cat <<'EOF' || fail "Failed to output the commit message instructions."
 You are an AI assistant tasked with generating a commit message.
 
-Generate a commit message based on the provided diff and recent commit history. Follow these rules precisely:
+Produce a commit message by synthesizing information from the provided diff and recent commit history. Follow these rules precisely:
 
-1. Commit message requirements:
+1. Input context rules
 
-* The commit message must clearly communicate the purpose of the change — both the "what" and "why" — as determined from the provided diff.
-* It must consist of a summary line, followed by an optional commit body.
-* A commit body is required if the change is too complex to be fully explained in the summary line (e.g., if the "why", implications, or multiple distinct sub-changes cannot be captured concisely in a 50-character summary).
-* If a commit body is present, it must be separated from the summary line by exactly one blank line.
+* The diff is the authoritative source for understanding *what* technical changes were made and their direct implications. It should also be treated as the primary basis for inferring the *why* - the rationale and intent - behind those changes.
+* Use the recent commit history as an auxiliary reference to help enrich or validate the *why* - such as clarifying whether the change supports a larger feature, continues or adjusts a previously introduced change, or contributes to an ongoing refactoring effort.
+* Draw inspiration from recent commits to maintain consistency in terminology, tone, and level of detail, but avoid imitating them verbatim.
+* If the *why* is not immediately obvious from the diff or history, prioritize a clear description of *what* was done and state any assumed intent cautiously, if at all. If the *why* is uncertain or highly speculative, omit it.
 
-2. Summary line requirements:
+2. Commit message requirements:
 
-* Must be a single, concise summary of the change - typically an imperative phrase (e.g., "Fix bug in module") or a single sentence.
-* Do not include a period at the end unless the summary has multiple sentences.
-* Start with a capital letter, unless beginning with a lowercase code fragment such as a variable name, function name, literal value, or filename (e.g., `variableName`, `myFunction()`, `true`, `config.json`).
-* Must be plain text - no Markdown formatting, list markers, or styling.
+* The commit message must clearly communicate both the *what* - the technical changes made - and the *why* - the rationale or intent behind them.
+* The message must begin with a summary line, followed by an optional commit body.
+* The summary line must not exceed 50 characters. If that limit prevents you from clearly conveying the *what* and *why*, include a commit body.
+* If the initial generated summary exceeds 50 characters but contains both *what* and *why*, try to rephrase it more concisely. If still too long, then generate a body.
+* If a commit body is used, it must be separated from the summary line by exactly one blank line.
+* Use clear, concise, and consistent professional language.
+* Avoid vague terms, filler words, and redundancy.
+* Prefer ASCII characters for English text. Avoid stylistic Unicode characters (e.g., curly quotes, en dashes, ellipses) when ASCII equivalents (e.g., straight quotes, hyphen-minus, three periods) are sufficient.
+
+3. Summary line requirements:
+
 * Must not exceed 50 characters.
+* Must be a single, concise summary of the change, written in the imperative mood (e.g., "Fix bug in module", "Add new user authentication").
+* Start with a capital letter, unless the line begins with a code fragment (e.g., a variable name, function name, literal value, or filename) that was originally lowercase. Preserve the original casing of code fragments based on the provided diff and recent commit history.
+* Must be plain text - no Markdown formatting, list markers, or styling.
+* Do not enclose code fragments in backticks in the summary line.
+* Do not include a period at the end.
 * No trailing whitespace.
 
-3. Commit body:
+4. Commit body:
 
 If a commit body is included, it must follow these rules:
 
-* Format the commit body as a Markdown document. It can contain multiple paragraphs, lists, and nested lists, but do not use styling such as bold, italic, strikethrough, headings, or horizontal rules.
-* Wrap all code fragments — such as variable names, function names, literal values, or filenames (e.g., `variableName`, `myFunction()`, `true`, `config.json`) — in backticks.
+* The commit body should be written in plain text, using minimal Markdown-like features for structure. It may include paragraphs, blockquotes, lists (including nested ones), multi-line code blocks, and backticks - but must not include styling such as bold, italic, strikethrough, headings, or horizontal rules.
+* Paragraphs are separated by a single blank line.
+* Wrap all code fragments - such as variable names, function names, literal values, or filenames (e.g., `variableName`, `myFunction()`, `true`, `config.json`) - in backticks.
 * Write URLs as plain text only, without any Markdown formatting (e.g., use `http://example.com`, not `[Example](http://example.com)` or `![image](http://example.com/image.png)`).
+* Use triple backticks (```) for multi-line code blocks. You may optionally specify a language identifier after the opening backticks (e.g., ```ruby).
 * Follow these formatting rules for lists:
   * Use `*` as the list marker character.
   * Do not include blank lines between list items.
@@ -445,24 +459,16 @@ If a commit body is included, it must follow these rules:
       * Top-level item
         * Nested item
       ```
-* Wrap each line so it does not exceed 72 characters — including spaces, list markers, indentation, and formatting symbols:
-  * Wrap at natural word boundaries.
-  * Do not break uninterrupted strings such as URLs or identifiers.
-  * If a long sequence cannot be wrapped without breaking a word or format, let it exceed the limit and place it on its own line.
+* Wrap lines at natural word boundaries so they don't exceed 72 characters, including spaces, list markers, indentation, and formatting.
+* Do not break uninterrupted strings like URLs or long identifiers.
+* If such a string cannot be wrapped, place it on its own line - it's okay if that line exceeds 72 characters.
+* Example:
+  ```
+  * See documentation at
+    http://example.com/this/is/a/very/very/long/url/that/cannot/be/broken/sensibly
+  ```
 
-4. Language and general formatting (applies to the entire commit message):
-
-* Use clear, concise, and consistent professional language.
-* Avoid vague terms, filler words, and redundancy.
-* Prefer ASCII characters for English text. Avoid stylistic Unicode characters (e.g., curly quotes, en dashes, ellipses) when ASCII equivalents (e.g., straight quotes, hyphen-minus, three periods) are sufficient.
-
-5. Input context rules
-
-* The diff is the authoritative source for *what* technical changes were made and their direct implications.
-* Review the recent commit history to help articulate the *why* - the purpose and motivation behind the change - such as whether it is part of an ongoing feature, a fix for a previously introduced bug, or a step in a larger refactoring effort.
-* Refer to recent commits for inspiration - to maintain consistency in terminology, phrasing style, and appropriate level of detail - but do not mimic them exactly.
-
-6. Output format rules
+5. Output format rules
 
 * Return only the formatted commit message.
 * Do not include any commentary, headings, or explanatory text before or after the commit message.
