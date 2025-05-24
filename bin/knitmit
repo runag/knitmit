@@ -422,7 +422,7 @@ Produce a commit message by synthesizing information from the provided diff and 
 * The commit message must clearly communicate both the *what* - the technical changes made - and the *why* - the rationale or intent behind them.
 * The message must begin with a summary line, followed by an optional commit body.
 * The summary line must not exceed 50 characters. If that limit prevents you from clearly conveying the *what* and *why*, include a commit body.
-* If the initial generated summary exceeds 50 characters but contains both *what* and *why*, try to rephrase it more concisely. If still too long, then generate a body.
+* If the initial generated summary exceeds 50 characters but contains both *what* and *why*, first attempt to rephrase it more concisely without losing essential information. If still too long or clarity is compromised, then generate a body.
 * If a commit body is used, it must be separated from the summary line by exactly one blank line.
 * Use clear, concise, and consistent professional language.
 * Avoid vague terms, filler words, and redundancy.
@@ -443,26 +443,49 @@ Produce a commit message by synthesizing information from the provided diff and 
 If a commit body is included, it must follow these rules:
 
 * The commit body should be written in plain text, using minimal Markdown-like features for structure. It may include paragraphs, blockquotes, lists (including nested ones), multi-line code blocks, and backticks - but must not include styling such as bold, italic, strikethrough, headings, or horizontal rules.
-* Paragraphs are separated by a single blank line.
 * Wrap all code fragments - such as variable names, function names, literal values, or filenames (e.g., `variableName`, `myFunction()`, `true`, `config.json`) - in backticks.
 * Write URLs as plain text only, without any Markdown formatting (e.g., use `http://example.com`, not `[Example](http://example.com)` or `![image](http://example.com/image.png)`).
 * Use triple backticks (```) for multi-line code blocks. You may optionally specify a language identifier after the opening backticks (e.g., ```ruby).
+* Separate top-level elements — such as paragraphs, blockquotes, lists, and fenced (multi-line) code blocks — with exactly one blank line, no matter their order. Within a list, do not insert blank lines between list items or between elements (paragraphs, blockquotes, nested lists, and fenced (multi-line) code blocks) inside a list item. Treat the entire list as a single block.Example:
+  ```
+  Paragraph
+
+  * 1st list item
+    > Blockquote
+    * Nested list item
+  * 2nd list item
+
+  Another paragraph
+
+  > Blockquote
+  ```
 * Follow these formatting rules for lists:
   * Use `*` as the list marker character.
+  * The list item text must begin immediately after the list marker (`*`) followed by EXACTLY ONE space. There should be NO additional spaces or indentation between the `* ` and the start of the item's text.
+    * Correct: `* List item content`
+    * Incorrect: `*  List item content` (two spaces after `*`)
+    * Incorrect: `*   List item content` (three spaces after `*`)
   * Do not include blank lines between list items.
-  * Place exactly one space between the list marker and the item content (e.g., `* List item content`).
+  * When a list item's text wraps to subsequent lines, these wrapped lines must be indented to align vertically with the first character of the text on the first line of that list item.
   * Use this indentation scheme for nested lists:
-    * Top-level list items have no indentation.
-    * Each nesting level adds exactly two spaces before the list marker.
-    * Example:
+    * Top-level list items have no indentation (zero spaces) *before* the `*` list marker.
+    * Each subsequent nesting level adds exactly two spaces of indentation *before* the `*` list marker.
+    * Example demonstrating correct marker spacing, wrapped line alignment, and nesting:
       ```
-      * Top-level item
-        * Nested item
+      * This is a top-level list item where the text starts
+        immediately after the marker and one space. Wrapped lines
+        align with 'This'.
+        * This is a nested list item, indented by two spaces
+          before the asterisk. Its text also starts right after
+          the marker and one space, and its wrapped lines align
+          with 'This'.
+        * Another nested item.
+      * Another top-level item.
       ```
-* Wrap lines at natural word boundaries so they don't exceed 72 characters, including spaces, list markers, indentation, and formatting.
+* Wrap lines at natural word boundaries so they don't exceed 72 characters. This 72-character limit includes all characters, including leading spaces for indentation, list markers, and the space after the list marker.
 * Do not break uninterrupted strings like URLs or long identifiers.
 * If such a string cannot be wrapped, place it on its own line - it's okay if that line exceeds 72 characters.
-* Example:
+* Example of a long string on its own line within a list:
   ```
   * See documentation at
     http://example.com/this/is/a/very/very/long/url/that/cannot/be/broken/sensibly
