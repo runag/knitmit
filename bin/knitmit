@@ -393,19 +393,19 @@ knitmit::query_models() {
   return 1
 }
 
-# ## `knitmit::commit_instructions`
+# ## `knitmit::message_rules`
 #
-# Print commit message formatting instructions for use with diffs.
+# Print commit message generation rules for use with diffs.
 #
 # Outputs guidelines for writing clear, structured commit messages, including summary,
 # body formatting, and tone principles. This content is written directly to standard output.
 #
 # ### Usage
 #
-# knitmit::commit_instructions
+# knitmit::message_rules
 #
-knitmit::commit_instructions() {
-    cat <<'EOF' || fail "Failed to output the commit message instructions."
+knitmit::message_rules() {
+    cat <<'EOF' || fail "Failed to output the commit message generation rules."
 You are an AI assistant tasked with generating a commit message.
 
 Produce a commit message by synthesizing information from the provided diff and recent commit history. Follow these rules precisely:
@@ -508,22 +508,22 @@ EOF
 # knitmit::make_prompt short
 #
 knitmit::make_prompt() {
-  local commit_instructions_path context_messages=12
+  local commit_rules_path context_messages=12
 
   # If the "short" keyword is provided, reduce the number of context messages
   if shell::argument_exists short "$@"; then
     context_messages=4
   fi
 
-  # Retrieve the path to the commit instructions file
-  commit_instructions_path="$(platform::config_home)/knitmit-commit-instructions.txt" ||
+  # Retrieve the path to the message rules file
+  commit_rules_path="$(platform::config_home)/knitmit-message-rules.txt" ||
     fail "Failed to determine the configuration path."
 
-  # Output commit instructions from file if present; fallback to built-in instructions
-  if [ -f "${commit_instructions_path}" ]; then
-    cat "${commit_instructions_path}" || fail "Failed to read the commit instructions file."
+  # Output commit message rules from file if present; fallback to built-in rules
+  if [ -f "${commit_rules_path}" ]; then
+    cat "${commit_rules_path}" || fail "Failed to read the message rules file."
   else
-    knitmit::commit_instructions || fail "Could not output the default commit message instructions."
+    knitmit::message_rules || fail "Could not output the default commit message generation rules."
   fi
   
   # Check if the current directory is a Git repository with at least one commit
@@ -682,7 +682,7 @@ config::default() {
 {
   "commit_with_template": true,
   "copy_prompt": false,
-  "copy_response": false,
+  "copy_result": false,
   "interactive_prompt_limit": 139000,
   "query_language_model": true,
   "report_unavailable_commands": false,
@@ -726,17 +726,17 @@ knitmit::main() {
   local response
 
   # Show help content if a help flag is provided
-  if shell::argument_exists "help" "$@" ||
-    shell::argument_exists "--help" "$@" ||
-    shell::argument_exists "-h" "$@"
+  if shell::argument_exists help "$@" ||
+     shell::argument_exists --help "$@" ||
+     shell::argument_exists -h "$@"
   then
     knitmit::display_help || softfail "Failed to display help information."
     return
   fi
 
-  # Show commit instructions if the corresponding flag is provided
-  if shell::argument_exists "commit-instructions" "$@"; then
-    knitmit::commit_instructions || softfail "Failed to display commit message instructions."
+  # Show commit message rules if the corresponding flag is provided
+  if shell::argument_exists "message-rules" "$@"; then
+    knitmit::message_rules || softfail "Failed to display commit message generation rules."
     return
   fi
 
@@ -759,34 +759,52 @@ knitmit::main() {
   # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection.
   prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
 
-  # Check if the 'copy_prompt' configuration is enabled or if the 'copy' argument is present
-  if config::is_enabled copy_prompt || shell::argument_exists copy "$@"; then
-    # Retrieve the interactive prompt limit from the configuration JSON
+  # Check whether to validate the length of an interactive prompt and provide feedback if it exceeds the configured limit.
+  # This is triggered when either the 'copy_prompt' config is enabled or a 'prompt' argument is supplied.
+  if config::is_enabled copy_prompt || shell::argument_exists prompt "$@"; then
+    # Attempt to retrieve the 'interactive_prompt_limit' from the configuration
     interactive_prompt_limit="$(config::get interactive_prompt_limit)" ||
-      fail "Could not retrieve the interactive prompt limit from the configuration."
+      fail "Failed to retrieve the 'interactive_prompt_limit' from the configuration."
 
-    # Check if the generated prompt exceeds the maximum length for interactive use
+    # Compare the prompt length to the interactive limit
     if (( "${#prompt}" > interactive_prompt_limit )); then
       if shell::argument_exists short "$@"; then
-        echo "The prompt remains too long for interactive use, even with the 'short' argument." >&2
+        # Notify the user that the prompt is still too long even with the 'short' flag
+        echo "The prompt is still too long for interactive use, even with the 'short' argument." >&2
       else
-        echo "The prompt exceeds the interactive use length limit. To shorten it, use the 'short' argument:" >&2
+        # Suggest using the 'short' flag to reduce prompt length
+        echo "The prompt exceeds the maximum length for interactive use. Try the 'short' argument to reduce it:" >&2
         echo "  ${BASH_SOURCE[0]##*/} short" >&2
       fi
     fi
   fi
 
-  # Copy the prompt to the clipboard if the 'copy' argument is provided, or if
-  # the 'copy_prompt' setting is enabled, there is no 'result' argument, and the output is a terminal.
-  if shell::argument_exists copy "$@" || { config::is_enabled copy_prompt && ! shell::argument_exists result "$@" && [ -t 1 ]; }; then
+  # If 'prompt' argument is provided, handle its special behavior and return early.
+  if shell::argument_exists prompt "$@"; then
+    # If 'prompt' is provided and output is not a terminal, print the prompt and return early.
+    if ! [ -t 1 ]; then
+      echo "${prompt}"
+      return
+    fi
+
+    # At this point, 'prompt' is provided AND output IS a terminal.
+    # Copy the prompt to the clipboard.
     platform::copy_to_clipboard <<<"${prompt}" ||
       softfail "Could not copy the prompt to the clipboard."
-  fi
 
-  # If the 'copy' argument is present, skip querying the language model and return
-  if shell::argument_exists copy "$@"; then
+    # The 'prompt' argument was provided; skip querying the language model and return.
     echo "The 'copy' argument was provided; skipping the query to the language model." >&2
     return
+  fi
+
+  # If 'prompt' was NOT provided (as the above block would have returned otherwise),
+  # copy the prompt to the clipboard if:
+  # - the 'copy_prompt' setting is enabled,
+  # - the 'result' argument is not present, AND
+  # - the output is a terminal (ensuring this only happens for interactive use).
+  if config::is_enabled copy_prompt && ! shell::argument_exists result "$@" && [ -t 1 ]; then
+    platform::copy_to_clipboard <<<"${prompt}" ||
+      softfail "Could not copy the prompt to the clipboard."
   fi
 
   # Skip querying the language model if the configuration is disabled
@@ -798,32 +816,33 @@ knitmit::main() {
   # Query available language models with the generated prompt
   response="$(knitmit::query_models "$@")" || fail "Could not query any of the available language models."
 
-  # If the 'result' argument is provided and the output is a terminal, copy the response to the clipboard and return
-  if shell::argument_exists result "$@" && [ -t 1 ]; then
-    platform::copy_to_clipboard <<<"${response}" ||
-      softfail "Could not copy the language model response to the clipboard."
-    return
-  fi
-
   # If standard output is not a terminal, output the response and return
   if ! [ -t 1 ]; then
     echo "${response}"
     return
   fi
 
+  # If the 'result' argument is provided (and output is a terminal)
+  if shell::argument_exists result "$@"; then
+    # Copy the response to the clipboard and return
+    platform::copy_to_clipboard <<<"${response}" ||
+      softfail "Could not copy the language model response to the clipboard."
+    return
+  fi
+
   # Copy the response to the clipboard if the setting is enabled
-  if config::is_enabled copy_response; then
+  if config::is_enabled copy_result; then
     platform::copy_to_clipboard <<<"${response}" ||
       softfail "Could not copy the language model response to the clipboard."
   fi
 
-  # Create a Git commit using the model's response if the setting is enabled
+  # Create a Git commit using the model's response when configured; otherwise display it
   if config::is_enabled commit_with_template; then
     echo "Creating a Git commit with the response as the template..." >&2
     git commit --template <(echo "${response}") ||
       fail "Failed to create a commit with the provided template."
   else
-    # Otherwise, just output the response without creating a Git commit
+    # Output the response without creating a Git commit
     echo "${response}"
     return
   fi
@@ -852,22 +871,25 @@ The suggested message is then used to prepare a Git commit.
 
 Commands:
 
-  commit-instructions
-                 Displays formatting guidelines and writing standards for
-                 crafting high-quality commit messages. This output may be
-                 used as a template for a custom configuration file.
+  prompt         Generates the prompt and, if the output is a terminal,
+                 copies it to the system clipboard, then exits. This option
+                 bypasses querying the language model, allowing you to use the
+                 prompt elsewhere or review it manually. If the output is not a
+                 terminal, the prompt is printed to stdout instead.
 
-  copy           Generates the prompt and copies it to the system clipboard,
-                 then exits. This option bypasses querying the language model,
-                 allowing you to use the prompt elsewhere or review it manually.
-
-  result         Queries the language model and copies the response to the
-                 system clipboard without making a Git commit.
+  result         Queries the language model and, if the output is a terminal,
+                 copies the response to the system clipboard without making a
+                 Git commit. If the output is not a terminal, the response is
+                 printed to stdout instead.
 
   short          Generates a more concise prompt. This involves using a minimal
                  diff of staged changes, which can be helpful if the default
                  prompt is too long for the language model's input limits.
 
+  message-rules  Outputs the default rules used in the prompt for generating
+                 commit messages. These include formatting guidelines
+                 and writing standards, and can serve as a template
+                 for creating a custom configuration file.
 
   help, -h, --help
                  Displays this help message and exits.

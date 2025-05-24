@@ -7,7 +7,7 @@
 * **LLM-powered commit messages:** Uses large language models to suggest clear, well-formatted commit messages.
 * **Contextual prompting:** Builds prompts from staged Git diffs and recent commit history to provide relevant context.
 * **Prompt customization:** Offers a "short" prompt option with minimal diff context — ideal for large changes or when hitting token limits.
-* **Custom commit instructions:** Supports overriding default commit message guidelines via a local configuration file.
+* **Custom commit message rules:** Override default generation rules via a local config file.
 * **Flexible LLM configuration:**
   * Supports multiple LLM backends defined in the `model_preferences` section of the config file.
   * Attempts each configured model in order until one succeeds.
@@ -37,10 +37,10 @@ knitmit
 knitmit short
 
 # Generate the full prompt, copy it to the clipboard, and exit (no LLM query)
-knitmit copy
+knitmit prompt
 
 # Generate a short prompt, copy it to the clipboard, and exit (no LLM query)
-knitmit short copy
+knitmit short prompt
 
 # Query the LLM for a commit message, copy the response to the clipboard, and exit (no commit)
 knitmit result
@@ -54,8 +54,8 @@ knitmit > message.txt
 # Use a short prompt to query the LLM, write the response to stdout, and exit (no commit)
 knitmit short > message.txt
 
-# Show commit message formatting instructions (useful for creating a custom config file)
-knitmit commit-instructions
+# Outputs default commit message rules — useful as a base for custom config files
+knitmit message-rules
 
 # Display the help message
 knitmit help
@@ -129,7 +129,7 @@ If the file is not found, `knitmit` falls back to the following default configur
 {
   "commit_with_template": true,
   "copy_prompt": false,
-  "copy_response": false,
+  "copy_result": false,
   "interactive_prompt_limit": 139000,
   "query_language_model": true,
   "report_unavailable_commands": false,
@@ -152,7 +152,7 @@ You don't need to provide the entire configuration — any values you include wi
 
 * `commit_with_template` (boolean, default: `true`): If `true`, after receiving a response from the LLM, `knitmit` will run `git commit --template <(response)` to open your editor with the suggested message.
 * `copy_prompt` (boolean, default: `false`): If `true`, the generated prompt is copied to the clipboard *before* sending it to the LLM.
-* `copy_response` (boolean, default: `false`): If `true`, the LLM's response is copied to the clipboard.
+* `copy_result` (boolean, default: `false`): If `true`, the LLM's response is copied to the clipboard.
 * `interactive_prompt_limit` (integer, default: `139000`): Maximum prompt length considered suitable for interactive use (e.g., pasting into a web UI). If exceeded while `copy_prompt` is active or the `copy` command is used, a warning is shown.
 * `query_language_model` (boolean, default: `true`): If `false`, no LLM will be queried. This is useful when you only want to generate and copy the prompt.
 * `report_unavailable_commands` (boolean, default: `false`): If `true`, `knitmit` will immediately report any missing or unconfigured model commands in `model_preferences`. If `false`, errors are deferred until all models have been tried and are only shown if none return a successful response.
@@ -195,15 +195,15 @@ You don't need to provide the entire configuration — any values you include wi
 
 `knitmit` generates high-quality Git commit messages by creating a structured prompt for your configured LLM. This prompt begins with a concise summary, followed by a detailed explanation formatted using Markdown (limited to bulleted lists prefixed with `*`).
 
-The instructions for commit formatting are drawn from one of two sources:
+The rules for generating commit messages are sourced from one of two sources:
 
-* If a `knitmit-commit-instructions.txt` file exists in your [configuration directory](#configuration), its contents are used.
-* Otherwise, default built-in instructions are applied. You can view these using:
+* If a `knitmit-message-rules.txt` file exists in your [configuration directory](#configuration), its contents are used.
+* Otherwise, default built-in rules are applied. You can view these using:
   ```bash
-  knitmit commit-instructions
+  knitmit message-rules
   ```
 
-These instructions cover:
+These rules cover:
 
 * Summary formatting — character limits, style, and punctuation.
 * Body formatting — when to include a body, how to structure it, and Markdown usage.
@@ -213,12 +213,12 @@ These instructions cover:
 To customize these rules, redirect the output to a file and edit as needed:
 
 ```bash
-knitmit commit-instructions > ~/.config/knitmit-commit-instructions.txt
+knitmit message-rules > ~/.config/knitmit-message-rules.txt
 ```
 
 > This example is for Linux. On macOS or Windows, use the appropriate configuration path listed [here](#configuration).
 
-This file will override the built-in instructions whenever prompts are generated.
+This file overrides the built-in generation rules used when prompting for commit messages.
 
 The full prompt constructed by `knitmit` also includes:
 
