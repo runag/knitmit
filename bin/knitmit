@@ -382,7 +382,7 @@ knitmit::query_models() {
     
     # Log the language model command invocation if it is not a shell function
     if ! declare -F "${command_array[0]}" > /dev/null; then
-      echo "Invoking the language model command: ${command_array[*]}..." >&2
+      echo "Invoking the language model command: \`${command_array[*]}\`..." >&2
     fi
 
     # Run the model command with the provided prompt and capture the command response
@@ -669,7 +669,7 @@ knitmit::filter_result() {
 
     # Log the filter command invocation if it is not a shell function
     if ! declare -F "${command_array[0]}" > /dev/null; then
-      echo "Invoking the filter command: ${command_array[*]}..." >&2
+      echo "Invoking the filter command: \`${command_array[*]}\`..." >&2
     fi
 
     # Run the command with the current data and capture its response
