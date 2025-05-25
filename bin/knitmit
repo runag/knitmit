@@ -307,41 +307,59 @@ query::gemini() {
 
 # ## `knitmit::query_models`
 #
-# Queries a list of model preferences from a configuration JSON and attempts to retrieve a response.
-# If a model command is found and responds successfully, its response is returned and the function exits.
+# Queries a list of model preferences from the configuration JSON and attempts to return a response.
+#
+# This function retrieves a list of preferred model commands from the configuration, checks their availability
+# and configuration, and invokes them in order until one returns a successful response. If no suitable model
+# command succeeds, the function reports all encountered issues and returns a failure status.
 #
 # ### Usage
 #
-# knitmit::query_models
+# knitmit::query_models <model-prompt>
+#
+# Arguments:
+#   <model-prompt>  The prompt string to send to each model command
+#
+# ### Examples
+#
+# knitmit::query_models "Summarize the following..."
 #
 knitmit::query_models() {
-  local model_list model_array model_item command_raw command_array response
-  local report_line deffered_report=()
+  local command_array
+  local command_response
+  local command_string
+  local item_json
+  local items_array
+  local items_lines
+  local report_line
+  local report_queue=()
+
+  local model_prompt="$1"
 
   # Extract the list of model preferences from the configuration JSON
-  model_list="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${CONFIG_JSON}")" ||
+  items_lines="$(jq --exit-status --compact-output '.model_preferences[]' <<<"${CONFIG_JSON}")" ||
     fail "Failed to extract model preferences from the configuration."
 
   # Read the list of models into an array
-  readarray -t model_array <<<"${model_list}" ||
+  readarray -t items_array <<<"${items_lines}" ||
     fail "Failed to read model preferences into an array."
 
   # Iterate over each model preference
-  for model_item in "${model_array[@]}"; do
+  for item_json in "${items_array[@]}"; do
     # Convert the JSON array to a shell-compatible string representation
-    command_raw="$(jq --exit-status --raw-output '. | @sh' <<<"${model_item}")" ||
+    command_string="$(jq --exit-status --raw-output '. | @sh' <<<"${item_json}")" ||
       fail "Failed to process model preference item into a shell-compatible string."
 
-    # Use eval to support newlines in arguments when expanding the array
-    eval "command_array=(${command_raw})" ||
+    # Expand the command string into an array
+    eval "command_array=(${command_string})" ||
       fail "Failed to convert model preference item to a command array."
 
     # Verify if the command exists before attempting to run it
     if ! command -v "${command_array[0]}" >/dev/null; then
-      if config::is_enabled report_unavailable_commands; then
+      if config::is_enabled report_unavailable_models; then
         echo "The command specified in the model preferences list is not available: ${command_array[*]}" >&2
       else
-        deffered_report+=("The command specified in the model preferences list is not available: ${command_array[*]}")
+        report_queue+=("The command specified in the model preferences list is not available: ${command_array[*]}")
       fi
       # Skip the rest of the loop and proceed with the next iteration
       continue
@@ -352,39 +370,39 @@ knitmit::query_models() {
       # If the function exists, invoke it to check if the command is configured properly
       if ! "${command_array[0]}::is_configured"; then
         # If the command is not configured and reporting is enabled, display a message
-        if config::is_enabled report_unavailable_commands; then
+        if config::is_enabled report_unavailable_models; then
           echo "The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}" >&2
         else
-          deffered_report+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
+          report_queue+=("The query endpoint is listed in the model preferences list but is not configured: ${command_array[*]}")
         fi
         # Skip the rest of the loop and proceed with the next iteration
         continue
       fi
     fi
     
-    # Log the outgoing request with model command details
+    # Log the language model command invocation if it is not a shell function
     if ! declare -F "${command_array[0]}" > /dev/null; then
-      echo "Invoking language model command: ${command_array[*]}..." >&2
+      echo "Invoking the language model command: ${command_array[*]}..." >&2
     fi
 
-    # Run the model command with the provided prompt and capture the response
-    if ! response="$("${command_array[@]}" <<<"${prompt}")"; then
+    # Run the model command with the provided prompt and capture the command response
+    if ! command_response="$("${command_array[@]}" <<<"${model_prompt}")"; then
       echo "Model command failed with a non-zero exit status: ${command_array[*]}" >&2
       # Skip the rest of the loop and proceed with the next iteration
       continue
     fi
 
-    # Output the response and exit the loop
-    echo "${response}"
+    # Output the command response and exit the loop
+    echo "${command_response}"
     return
   done
 
-  if [ ${#deffered_report[@]} -gt 0 ]; then
+  if [ ${#report_queue[@]} -gt 0 ]; then
     # Inform the user that additional issues were reported during the model querying process
     echo "During model querying, the following was reported:" >&2
 
     # Loop through the deferred report array and display each line
-    for report_line in "${deffered_report[@]}"; do
+    for report_line in "${report_queue[@]}"; do
       echo "${report_line}" >&2
     done
   fi
@@ -592,6 +610,84 @@ knitmit::make_prompt() {
   echo "--- END DIFF ---"
 }
 
+# ## `knitmit::filter_result`
+#
+# Applies configured filter commands to the input string and echoes the final result.
+#
+# The function reads the `result_filters` array from `${CONFIG_JSON}`, verifies each command, and
+# invokes them in order. Every filter reads the current data from standard input and passes its
+# output to the next filter. Missing or failing filters are skipped. After all filters have run,
+# the resulting string is written to standard output.
+#
+# ### Usage
+#
+# knitmit::filter_result <input-data>
+#
+# Arguments:
+#   <input-data>  The initial text to process through the configured result filters
+#
+# ### Examples
+#
+# knitmit::filter_result "Raw response from the model"
+#
+knitmit::filter_result() {
+  local command_array
+  local command_response
+  local command_string
+  local item_json
+  local items_array
+  local items_lines
+
+  local input_data="$1"
+
+  # Extract the list of filters from the configuration JSON
+  items_lines="$(jq --exit-status --compact-output '.result_filters[]' <<<"${CONFIG_JSON}")" ||
+    fail "Failed to extract filters from the configuration."
+
+  # Read the list of filters into an array
+  readarray -t items_array <<<"${items_lines}" ||
+    fail "Failed to read filters into an array."
+
+  # Iterate over each filter command
+  for item_json in "${items_array[@]}"; do
+    # Convert the JSON array to a shell-compatible string representation
+    command_string="$(jq --exit-status --raw-output '. | @sh' <<<"${item_json}")" ||
+      fail "Failed to process filter item into a shell-compatible string."
+
+    # Expand the command string into an array
+    eval "command_array=(${command_string})" ||
+      fail "Failed to convert filter item to a command array."
+
+    # Verify if the command exists before attempting to run it
+    if ! command -v "${command_array[0]}" >/dev/null; then
+      if config::is_enabled report_unavailable_filters; then
+        echo "The command specified in the filters list is not available: ${command_array[*]}" >&2
+      fi
+      # Skip the rest of the loop and proceed with the next iteration
+      continue
+    fi
+
+    # Log the filter command invocation if it is not a shell function
+    if ! declare -F "${command_array[0]}" > /dev/null; then
+      echo "Invoking the filter command: ${command_array[*]}..." >&2
+    fi
+
+    # Run the command with the current data and capture its response
+    if ! command_response="$("${command_array[@]}" <<<"${input_data}")"; then
+      echo "The command returned a non-zero exit status: ${command_array[*]}" >&2
+      # Skip the rest of the loop and proceed with the next iteration
+      continue
+    fi
+
+    # Update the input for the next filter
+    input_data="${command_response}"
+  done
+
+  # Output the final filtered result
+  echo "${input_data}"
+  return
+}
+
 # ## `config::get`
 #
 # Retrieves a value from the configuration for the specified key.
@@ -708,7 +804,8 @@ config::default() {
   "copy_result": false,
   "interactive_prompt_limit": 139000,
   "query_language_model": true,
-  "report_unavailable_commands": false,
+  "report_unavailable_models": false,
+  "report_unavailable_filters": false,
   "model_preferences": [
     ["query::gemini", "gemini-2.5-flash-preview-05-20"],
     ["query::gemini", "gemini-2.0-flash"],
@@ -716,6 +813,9 @@ config::default() {
     ["aichat"],
     ["llm"],
     ["sgpt"]
+  ],
+  "result_filters": [
+    ["mdformat", "-"]
   ]
 }
 JSON
@@ -730,23 +830,32 @@ JSON
 # knitmit::main [<arguments>...]
 #
 # Arguments:
-#   short    Attempt to use a shorter prompt if the generated one is too long
-#   copy     Skip querying the models and only copy the prompt to the clipboard
-#   result   Copy the language model response to the clipboard and skip further processing
+#   prompt         Generate prompt and copy to clipboard. Skips model query.
+#   result         Query the model and copy response to clipboard. No commit.
+#   short          Use minimal diff to generate shorter prompt if needed.
+#   message-rules  Output default commit message formatting rules.
+#   help           Display help and exit.
+#
+# The arguments can be specified in any order.
 #
 # ### Examples
 #
-# knitmit::main copy
-# knitmit::main result
-# knitmit::main short
-# knitmit::main short copy
+# knitmit::main prompt  
+# knitmit::main result  
+# knitmit::main short  
+# knitmit::main short prompt  
 # knitmit::main short result
+#
+# Requirements:
+#   * Requires Git and must be run inside a Git repository.
+#   * The GEMINI_API_KEY environment variable must be set to query the Gemini.
 #
 knitmit::main() {
   local CONFIG_JSON
   local interactive_prompt_limit
-  local prompt
-  local response
+  local knitmit_result
+  local model_response
+  local model_prompt
 
   # Show help content if a help flag is provided
   if shell::argument_exists help "$@" ||
@@ -780,7 +889,7 @@ knitmit::main() {
 
   # Generate the prompt using the staged changes and commit history.
   # Pass all script arguments to knitmit::make_prompt for 'short' keyword detection.
-  prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
+  model_prompt="$(knitmit::make_prompt "$@")" || fail "Failed to generate the prompt."
 
   # Check whether to validate the length of an interactive prompt and provide feedback if it exceeds the configured limit.
   # This is triggered when either the 'copy_prompt' config is enabled or a 'prompt' argument is supplied.
@@ -790,7 +899,7 @@ knitmit::main() {
       fail "Failed to retrieve the 'interactive_prompt_limit' from the configuration."
 
     # Compare the prompt length to the interactive limit
-    if (( "${#prompt}" > interactive_prompt_limit )); then
+    if (( "${#model_prompt}" > interactive_prompt_limit )); then
       if shell::argument_exists short "$@"; then
         # Notify the user that the prompt is still too long even with the 'short' flag
         echo "The prompt is still too long for interactive use, even with the 'short' argument." >&2
@@ -806,13 +915,13 @@ knitmit::main() {
   if shell::argument_exists prompt "$@"; then
     # If 'prompt' is provided and output is not a terminal, print the prompt and return early.
     if ! [ -t 1 ]; then
-      echo "${prompt}"
+      echo "${model_prompt}"
       return
     fi
 
     # At this point, 'prompt' is provided AND output IS a terminal.
     # Copy the prompt to the clipboard.
-    platform::copy_to_clipboard <<<"${prompt}" ||
+    platform::copy_to_clipboard <<<"${model_prompt}" ||
       softfail "Could not copy the prompt to the clipboard."
 
     # The 'prompt' argument was provided; skip querying the language model and return.
@@ -826,7 +935,7 @@ knitmit::main() {
   # - the 'result' argument is not present, AND
   # - the output is a terminal (ensuring this only happens for interactive use).
   if config::is_enabled copy_prompt && ! shell::argument_exists result "$@" && [ -t 1 ]; then
-    platform::copy_to_clipboard <<<"${prompt}" ||
+    platform::copy_to_clipboard <<<"${model_prompt}" ||
       softfail "Could not copy the prompt to the clipboard."
   fi
 
@@ -837,36 +946,39 @@ knitmit::main() {
   fi
 
   # Query available language models with the generated prompt
-  response="$(knitmit::query_models "$@")" || fail "Could not query any of the available language models."
+  model_response="$(knitmit::query_models "${model_prompt}")" || fail "Could not query any of the available language models."
 
-  # If standard output is not a terminal, output the response and return
+  # Filter the response to extract the relevant result
+  knitmit_result="$(knitmit::filter_result "${model_response}")" || fail "Failed to filter the model response."
+
+  # If standard output is not a terminal, output the result and return
   if ! [ -t 1 ]; then
-    echo "${response}"
+    echo "${knitmit_result}"
     return
   fi
 
   # If the 'result' argument is provided (and output is a terminal)
   if shell::argument_exists result "$@"; then
-    # Copy the response to the clipboard and return
-    platform::copy_to_clipboard <<<"${response}" ||
-      softfail "Could not copy the language model response to the clipboard."
+    # Copy the result to the clipboard and return
+    platform::copy_to_clipboard <<<"${knitmit_result}" ||
+      softfail "Could not copy the commit message to the clipboard."
     return
   fi
 
-  # Copy the response to the clipboard if the setting is enabled
+  # Copy the result to the clipboard if the setting is enabled
   if config::is_enabled copy_result; then
-    platform::copy_to_clipboard <<<"${response}" ||
-      softfail "Could not copy the language model response to the clipboard."
+    platform::copy_to_clipboard <<<"${knitmit_result}" ||
+      softfail "Could not copy the commit message to the clipboard."
   fi
 
-  # Create a Git commit using the model's response when configured; otherwise display it
+  # Create a Git commit using the result when configured; otherwise display it
   if config::is_enabled commit_with_template; then
-    echo "Creating a Git commit with the response as the template..." >&2
-    git commit --template <(echo "${response}") ||
+    echo "Creating a Git commit using the message generated by the language model as the template..." >&2
+    git commit --template <(echo "${knitmit_result}") ||
       fail "Failed to create a commit with the provided template."
   else
-    # Output the response without creating a Git commit
-    echo "${response}"
+    # Output the result without creating a Git commit
+    echo "${knitmit_result}"
     return
   fi
 }
